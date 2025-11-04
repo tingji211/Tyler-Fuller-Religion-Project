@@ -1,0 +1,545 @@
+---
+title: "Tyler Fuller data analysis"
+format: html
+editor: visual
+---
+
+```{r}
+library(haven)
+library(tidyverse)
+```
+
+```{r}
+w70 <- read_sav("ATP W70.sav")
+w84 <- read_sav("ATP W84.sav")
+```
+
+```{r}
+#| label: initial plots for presentation 1
+df <- w70 %>% 
+  select(ATTENDMONTH_W70,ATTENDONLINE_W70,F_RELIG,F_SEX,F_AGECAT)%>% 
+  filter(if_all(everything(), ~ .x != 99)) %>% 
+  filter(F_RELIG == 1|F_RELIG == 2)
+
+df2 <- w84 %>%
+  select(ATTENDMONTH_W84,ATTENDONLINE_W84,F_RELIG,F_GENDER,F_AGECAT)%>% 
+  filter(if_all(everything(), ~ .x != 99)) %>% 
+  filter(F_RELIG == 1|F_RELIG == 2)
+
+
+#Attend form VS Religion ONLINE (WAVE70)
+ggplot(df, aes(x = factor(F_RELIG), fill = factor(ATTENDONLINE_W70))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Number of Respondents Attending Online Worship by Religion(July 2020)",
+    x = "Religious Group",
+    y = "Number of People",
+    fill = "Attended Online"
+  ) +
+  scale_x_discrete(labels = c("1" = "Protestant", "2" = "Roman Catholic")) +
+  scale_fill_discrete(labels = c("1" = "Yes", "2" = "No")) +   # 👈 这一行
+  theme_minimal()
+
+#Attend form VS Religion ONLINE (WAVE84)
+ggplot(df2, aes(x = factor(F_RELIG), fill = factor(ATTENDONLINE_W84))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Number of Respondents Attending Online Worship by Religion(March 2021)",
+    x = "Religious Group",
+    y = "Number of People",
+    fill = "Attended Online"
+  ) +
+  scale_x_discrete(labels = c("1" = "Protestant", "2" = "Roman Catholic")) +
+  scale_fill_discrete(labels = c("1" = "Yes", "2" = "No")) +   
+  theme_minimal()
+
+#Attend form VS Religion INPERSON (WAVE70)
+ggplot(df, aes(x = factor(F_RELIG), fill = factor(ATTENDMONTH_W70))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Number of Respondents Attending In-person Worship by Religion(July 2020)",
+    x = "Religious Group",
+    y = "Number of People",
+    fill = "Attended In-person"
+  ) +
+  scale_x_discrete(labels = c("1" = "Protestant", "2" = "Roman Catholic")) +
+  scale_fill_discrete(labels = c("1" = "Yes", "2" = "No")) +   
+  theme_minimal()
+
+#Attend form VS Religion INPERSON (WAVE84)
+ggplot(df2, aes(x = factor(F_RELIG), fill = factor(ATTENDMONTH_W84))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Number of Respondents Attending In-person Worship by Religion(March 2021)",
+    x = "Religious Group",
+    y = "Number of People",
+    fill = "Attended In-person"
+  ) +
+  scale_x_discrete(labels = c("1" = "Protestant", "2" = "Roman Catholic")) +
+  scale_fill_discrete(labels = c("1" = "Yes", "2" = "No")) +   
+  theme_minimal()
+
+#Attend form VS Gender(WAVE70)
+ggplot(df, aes(x = factor(F_SEX), fill = factor(ATTENDONLINE_W70))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Number of Respondents Attending Online Worship by Gender(July 2020)",
+    x = "Gender",
+    y = "Number of People",
+    fill = "Attended Online"
+  ) +
+  scale_x_discrete(labels = c("1" = "Male", "2" = "Female")) +
+  scale_fill_discrete(labels = c("1" = "Yes", "2" = "No")) +   # 👈 这一行
+  theme_minimal()
+
+#Attend form VS Gender(WAVE84)
+ggplot(df2, aes(x = factor(F_GENDER), fill = factor(ATTENDONLINE_W84))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  scale_x_discrete(labels = c("1" = "Male", "2" = "Female", "3" = "Others")) +
+  scale_fill_discrete(labels = c("1" = "Yes", "2" = "No")) +
+  labs(
+    title = "Number of Respondents Attending Online Worship by Gender (March 2021)",
+    x = "Gender",
+    y = "Number of People",
+    fill = "Attended Online"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+#| label: hypothesis 1 a,b testing
+online <-w70$ATTENDONLINE_W70
+inperson <- w70$ATTENDMONTH_W70
+threat <- w70$COVIDTHREAT_b_W70
+
+df <- w70 %>%
+  select(ATTENDMONTH_W70,ATTENDONLINE_W70,COVIDTHREAT_b_W70)%>%
+  filter(if_all(everything(), ~ .x != 99)) %>%
+  mutate(
+    attend_online = ifelse(ATTENDONLINE_W70 == 1, 1, 0),
+    attend_inperson = ifelse(ATTENDMONTH_W70 == 1, 1, 0),
+    threat = 4-COVIDTHREAT_b_W70
+  )
+
+
+model_h1a <- glm(attend_online ~ threat, data = df, family = binomial)
+summary(model_h1a)
+df$pred <- predict(model_h1a, type = "response")
+```
+
+```{r}
+ggplot(df, aes(x = factor(threat), y = pred)) +
+  stat_summary(fun = mean, geom = "bar", fill = "#4B9CD3", width = 0.6) +
+  geom_text(stat = "summary", fun = mean,
+            aes(label = round(..y.., 2)), vjust = -0.5) +
+  labs(
+    title = "Predicted Probability of Online Worship by Perceived Threat",
+    x = "Perceived Threat (1 = Low, 3 = High)",
+    y = "Predicted Probability"
+  ) +
+  theme_minimal()
+model_h1b <- glm(attend_inperson ~ threat,
+                 data = df,
+                 family = binomial)
+
+summary(model_h1b)
+```
+
+```{r}
+
+#| label: create respond variable attend
+# w70_cp <- w70 %>%
+#   filter(F_RELIG %in% c(1,2)) %>%
+#   filter(ATTENDMONTH_W70 != 99, ATTENDONLINE_W70 != 99) %>%
+#   mutate(attend = (ATTENDMONTH_W70 - 1) * 2 + ATTENDONLINE_W70)
+# w70_cp$attend <- as.factor(w70_cp$attend)
+# ------------------------------------------------------------
+# ATTENDMONTH_W70 = attend mass in person
+# ATTENDONLINE_W70 = attend mass online
+#
+# attend codes:
+# 1 -> attend in person = 1, online = 1  (attend both)
+# 2 -> attend in person = 1, online = 2  (only in person)
+# 3 -> attend in person = 2, online = 1  (only online)
+# 4 -> attend in person = 2, online = 2  (attend neither)
+#
+# Note: rows with v1 == 99 or v2 == 99 are removed
+# ------------------------------------------------------------
+
+#model_multi <- multinom(attend ~ ., data = w70_cp)
+#summary(model_multi)
+# 错误于multinom(attend ~ ., data = w70_cp2): 
+#   need two or more classes to fit a multinom model
+# 此外: 警告信息:
+# In multinom(attend ~ ., data = w70_cp2) : groups ‘1’ ‘2’ ‘3’ ‘4’ are empty
+
+```
+
+```{r}
+w70_cp <- w70 %>%
+  filter(F_RELIG %in% c(1,2))%>%
+  filter(ATTENDMONTH_W70 != 99, ATTENDONLINE_W70 != 99)
+w70_cp %>%
+  group_by(ATTENDMONTH_W70) %>%
+  summarise(
+    mean_month = mean(ATTENDMONTH_W70, na.rm = TRUE),
+    sd_month = sd(ATTENDMONTH_W70, na.rm = TRUE),
+    n = n()
+  )
+
+w70_cp %>%
+  group_by(ATTENDONLINE_W70) %>%
+  summarise(
+    mean_month = mean(ATTENDONLINE_W70, na.rm = TRUE),
+    sd_month = sd(ATTENDONLINE_W70, na.rm = TRUE),
+    n = n()
+  )
+```
+
+```{r}
+# w70_cp2 <- w70_cp %>%
+#   mutate(across(c(F_AGECAT, F_SEX, F_EDUCCAT, F_MARITAL), as_factor))
+# 
+# model <- glm((ATTENDMONTH_W70-1) ~ F_AGECAT + F_SEX + F_EDUCCAT + F_MARITAL, 
+#              data = w70_cp2, 
+#              family = binomial)
+# 
+# summary(model)
+```
+
+```{r}
+#| label: create clean dataset with attendmonth,attendonline (1/0)
+
+w70_cp_clean <- w70_cp
+w70_cp_clean$ATTENDMONTH_W70 <- as.character(w70_cp_clean$ATTENDMONTH_W70)
+w70_cp_clean$ATTENDMONTH_bin <- ifelse(
+  w70_cp_clean$ATTENDMONTH_W70 == "1",
+  1, 0
+)
+```
+
+```{r}
+#| label: COVIDCONG2_W70
+
+# COVIDCONG2_W70 
+# Regardless of whether it is now open to the public, is the house of worship you attend most often CURRENTLY streaming or recording its services so that people can watch them online or on TV?
+ggplot(w70_cp %>% filter(!is.na(COVIDCONG2_W70)), aes(x = factor(F_RELIG), fill = factor(COVIDCONG2_W70))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Number of Congregations Streaming or Recording Services Online by Religion (July 2020)",
+    x = "Religious Group",
+    y = "Number of People",
+    fill = "Church Streams or Records Services"
+  ) +
+  scale_x_discrete(labels = c("1" = "Protestant", "2" = "Roman Catholic")) +
+  scale_fill_discrete(labels = c("1" = "Yes", "2" = "No")) +  
+  theme_minimal()
+
+
+# analysis
+model_1b <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_clean, family = binomial, weights = WEIGHT_W70)
+
+summary(model_1b)
+
+model_1 <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_clean, family = binomial)
+
+summary(model_1)
+
+```
+
+
+
+```{r}
+#| label: COVIDCONG3_W70
+# COVIDCONG3_W70. 
+# Which of the following best describes the current operating status of the house of worship you attend most often?
+ggplot(w70_cp%>% filter(!is.na(COVIDCONG3_W70)), aes(x = factor(F_RELIG), fill = factor(COVIDCONG3_W70))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Operating Status of Congregations by Religion (July 2020)",
+    x = "Religious Group",
+    y = "Number of Respondents",
+    fill = "Operating Status of House of Worship"
+  ) +
+  scale_x_discrete(labels = c(
+    "1" = "Protestant",
+    "2" = "Roman Catholic"
+  )) +
+  scale_fill_discrete(labels = c(
+    "1" = "Open as before COVID-19",
+    "2" = "Open with modifications",
+    "3" = "Not open for in-person services",
+    "4" = "Not sure",
+    "99" = "Refused"
+  )) +
+  theme_minimal()
+
+model_2 <- glm(
+  ATTENDMONTH_bin ~ factor(COVIDCONG3_W70),
+  data = w70_cp_clean,
+  family = binomial
+)
+summary(model_2)
+```
+
+
+
+```{r}
+#| label: CONGRESTRICT1_a_W70.
+# CONGRESTRICT1_a_W70. 
+# Which of the following, if any, is the house of worship you attend most often CURRENTLY doing as a result of the coronavirus outbreak?    Requiring people to stay at least 6 feet away from each other
+ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_a_W70)), aes(x = factor(F_RELIG), fill = factor(CONGRESTRICT1_a_W70))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Social Distancing Rules in Congregations by Religion (July 2020)",
+    x = "Religious Group",
+    y = "Number of Respondents",
+    fill = "Require 6-Foot Social Distancing"
+  ) +
+  scale_x_discrete(labels = c(
+    "1" = "Protestant",
+    "2" = "Roman Catholic"
+  )) +
+  scale_fill_discrete(labels = c(
+    "1" = "Yes, my congregation is doing this",
+    "2" = "No, my congregation is not doing this",
+    "3" = "Not sure",
+    "99" = "Refused"
+  )) +
+  theme_minimal()
+
+
+model_3 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_a_W70),
+                data = w70_cp_clean,
+                family = binomial)
+summary(model_3)
+```
+
+People whose congregations did not require six-foot distancing were significantly more likely to have attended in-person services than those whose congregations did. Those who were not sure about distancing rules were much less likely to attend.
+
+```{r}
+#| label: CONGRESTRICT1_b_W70
+# CONGRESTRICT1_b_W70. 
+# Which of the following, if any, is the house of worship you attend most often CURRENTLY doing as a result of the coronavirus outbreak?    Requiring people to wear masks
+ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_b_W70)), aes(x = factor(F_RELIG), fill = factor(CONGRESTRICT1_b_W70))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Mask Requirements in Congregations by Religion (July 2020)",
+    x = "Religious Group",
+    y = "Number of Respondents",
+    fill = "Require Masks During Services"
+  ) +
+  scale_x_discrete(labels = c(
+    "1" = "Protestant",
+    "2" = "Roman Catholic"
+  )) +
+  scale_fill_discrete(labels = c(
+    "1" = "Yes, my congregation is doing this",
+    "2" = "No, my congregation is not doing this",
+    "3" = "Not sure",
+    "99" = "Refused"
+  )) +
+  theme_minimal()
+
+
+model_4 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_b_W70),
+                data = w70_cp_clean,
+                family = binomial)
+summary(model_4)
+```
+
+People whose congregations did not require masks were significantly more likely to attend in-person religious services than those whose congregations did. Those who were unsure about mask rules were much less likely to attend.
+
+```{r}
+#| label: CONGRESTRICT1_c_W70.
+
+# CONGRESTRICT1_c_W70. 
+# Which of the following, if any, is the house of worship you attend most often CURRENTLY doing as a result of the coronavirus outbreak?    Restricting the number of people who can attend at any one time
+ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_c_W70)), aes(x = factor(F_RELIG), fill = factor(CONGRESTRICT1_c_W70))) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),          
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Restrictions on Number of Attendees by Religion (July 2020)",
+    x = "Religious Group",
+    y = "Number of Respondents",
+    fill = "Restrict Attendance Numbers"
+  ) +
+  scale_x_discrete(labels = c(
+    "1" = "Protestant",
+    "2" = "Roman Catholic"
+  )) +
+  scale_fill_discrete(labels = c(
+    "1" = "Yes, my congregation is doing this",
+    "2" = "No, my congregation is not doing this",
+    "3" = "Not sure"
+  )) +
+  theme_minimal()
+
+
+model_5 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_c_W70),
+                data = w70_cp_clean,
+                family = binomial)
+summary(model_5)
+```
+
+People whose congregations did not restrict attendance numbers were significantly more likely to attend in-person religious services than those that did. Respondents who were unsure about such restrictions were less likely to attend.
+
+```{r}
+#| label: Technology & access
+
+# F_ACSWEB
+# Household internet status
+ggplot(
+  w70_cp %>% filter(!is.na(F_ACSWEB)),
+  aes(x = factor(F_RELIG), fill = factor(F_ACSWEB))
+) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Household Internet Access by Religion (July 2020)",
+    x = "Religious Group",
+    y = "Number of Respondents",
+    fill = "Internet Access Type"
+  ) +
+  scale_x_discrete(labels = c(
+    "1" = "Protestant",
+    "2" = "Roman Catholic"
+  )) +
+  scale_fill_discrete(labels = c(
+    "1" = "Accesses Internet by paying a provider",
+    "2" = "Does not access Internet by paying a provider"
+  )) +
+  theme_minimal()
+
+# 确保是字符型
+w70_cp_clean$F_ACSWEB <- as.character(w70_cp_clean$F_ACSWEB)
+
+
+model_6 <- glm(ATTENDMONTH_bin ~ factor(F_ACSWEB),
+                data = w70_cp_clean,
+                family = binomial)
+summary(model_6)
+```
+
+There was no significant relationship between household internet access and in-person religious attendance. Whether respondents had internet access or not did not meaningfully affect their likelihood of attending services.
+
+```{r}
+# SNSUSE_W70. 
+# Do you ever use social media sites like Facebook, Twitter or Instagram?
+ggplot(
+  w70_cp %>% 
+    filter(SNSUSE_W70 %in% c(1, 2)),  # 去掉 Refused (99) 和 NA
+  aes(x = factor(F_RELIG), fill = factor(SNSUSE_W70))
+) +
+  geom_bar(position = "dodge") +
+  geom_text(
+    stat = "count",
+    aes(label = after_stat(count)),
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3
+  ) +
+  labs(
+    title = "Social Media Usage by Religion (July 2020)",
+    x = "Religious Group",
+    y = "Number of Respondents",
+    fill = "Use of Social Media Sites"
+  ) +
+  scale_x_discrete(labels = c(
+    "1" = "Protestant",
+    "2" = "Roman Catholic"
+  )) +
+  scale_fill_discrete(labels = c(
+    "1" = "Yes, I use social media sites",
+    "2" = "No, I do not use social media sites"
+  )) +
+  theme_minimal()
+
+
+model_7 <- glm(ATTENDMONTH_bin ~ factor(SNSUSE_W70),
+                data = w70_cp_clean,
+                family = binomial)
+summary(model_7)
+```
