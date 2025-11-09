@@ -7,6 +7,7 @@ editor: visual
 ```{r}
 library(haven)
 library(tidyverse)
+library(VGAM)
 ```
 
 ```{r}
@@ -148,74 +149,6 @@ ggplot(df2, aes(x = factor(F_GENDER), fill = factor(ATTENDONLINE_W84))) +
   theme_minimal()
 ```
 
-```{r}
-#| label: hypothesis 1 a,b testing
-online <-w70$ATTENDONLINE_W70
-inperson <- w70$ATTENDMONTH_W70
-threat <- w70$COVIDTHREAT_b_W70
-
-df <- w70 %>%
-  select(ATTENDMONTH_W70,ATTENDONLINE_W70,COVIDTHREAT_b_W70)%>%
-  filter(if_all(everything(), ~ .x != 99)) %>%
-  mutate(
-    attend_online = ifelse(ATTENDONLINE_W70 == 1, 1, 0),
-    attend_inperson = ifelse(ATTENDMONTH_W70 == 1, 1, 0),
-    threat = 4-COVIDTHREAT_b_W70
-  )
-
-
-model_h1a <- glm(attend_online ~ threat, data = df, family = binomial)
-summary(model_h1a)
-df$pred <- predict(model_h1a, type = "response")
-```
-
-```{r}
-ggplot(df, aes(x = factor(threat), y = pred)) +
-  stat_summary(fun = mean, geom = "bar", fill = "#4B9CD3", width = 0.6) +
-  geom_text(stat = "summary", fun = mean,
-            aes(label = round(..y.., 2)), vjust = -0.5) +
-  labs(
-    title = "Predicted Probability of Online Worship by Perceived Threat",
-    x = "Perceived Threat (1 = Low, 3 = High)",
-    y = "Predicted Probability"
-  ) +
-  theme_minimal()
-model_h1b <- glm(attend_inperson ~ threat,
-                 data = df,
-                 family = binomial)
-
-summary(model_h1b)
-```
-
-```{r}
-
-#| label: create respond variable attend
-# w70_cp <- w70 %>%
-#   filter(F_RELIG %in% c(1,2)) %>%
-#   filter(ATTENDMONTH_W70 != 99, ATTENDONLINE_W70 != 99) %>%
-#   mutate(attend = (ATTENDMONTH_W70 - 1) * 2 + ATTENDONLINE_W70)
-# w70_cp$attend <- as.factor(w70_cp$attend)
-# ------------------------------------------------------------
-# ATTENDMONTH_W70 = attend mass in person
-# ATTENDONLINE_W70 = attend mass online
-#
-# attend codes:
-# 1 -> attend in person = 1, online = 1  (attend both)
-# 2 -> attend in person = 1, online = 2  (only in person)
-# 3 -> attend in person = 2, online = 1  (only online)
-# 4 -> attend in person = 2, online = 2  (attend neither)
-#
-# Note: rows with v1 == 99 or v2 == 99 are removed
-# ------------------------------------------------------------
-
-#model_multi <- multinom(attend ~ ., data = w70_cp)
-#summary(model_multi)
-# 错误于multinom(attend ~ ., data = w70_cp2): 
-#   need two or more classes to fit a multinom model
-# 此外: 警告信息:
-# In multinom(attend ~ ., data = w70_cp2) : groups ‘1’ ‘2’ ‘3’ ‘4’ are empty
-
-```
 
 ```{r}
 w70_cp <- w70 %>%
@@ -296,8 +229,6 @@ summary(model_1)
 
 ```
 
-
-
 ```{r}
 #| label: COVIDCONG3_W70
 # COVIDCONG3_W70. 
@@ -338,8 +269,6 @@ model_2 <- glm(
 summary(model_2)
 ```
 
-
-
 ```{r}
 #| label: CONGRESTRICT1_a_W70.
 # CONGRESTRICT1_a_W70. 
@@ -378,7 +307,6 @@ model_3 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_a_W70),
 summary(model_3)
 ```
 
-People whose congregations did not require six-foot distancing were significantly more likely to have attended in-person services than those whose congregations did. Those who were not sure about distancing rules were much less likely to attend.
 
 ```{r}
 #| label: CONGRESTRICT1_b_W70
@@ -418,7 +346,6 @@ model_4 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_b_W70),
 summary(model_4)
 ```
 
-People whose congregations did not require masks were significantly more likely to attend in-person religious services than those whose congregations did. Those who were unsure about mask rules were much less likely to attend.
 
 ```{r}
 #| label: CONGRESTRICT1_c_W70.
@@ -458,7 +385,6 @@ model_5 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_c_W70),
 summary(model_5)
 ```
 
-People whose congregations did not restrict attendance numbers were significantly more likely to attend in-person religious services than those that did. Respondents who were unsure about such restrictions were less likely to attend.
 
 ```{r}
 #| label: Technology & access
@@ -503,7 +429,6 @@ model_6 <- glm(ATTENDMONTH_bin ~ factor(F_ACSWEB),
 summary(model_6)
 ```
 
-There was no significant relationship between household internet access and in-person religious attendance. Whether respondents had internet access or not did not meaningfully affect their likelihood of attending services.
 
 ```{r}
 # SNSUSE_W70. 
@@ -543,3 +468,555 @@ model_7 <- glm(ATTENDMONTH_bin ~ factor(SNSUSE_W70),
                 family = binomial)
 summary(model_7)
 ```
+
+
+# hypothesis test
+```{r}
+#| label: hypothesis 1 a,b testing
+online <-w70$ATTENDONLINE_W70
+inperson <- w70$ATTENDMONTH_W70
+threat <- w70$COVIDTHREAT_b_W70
+
+df <- w70 %>%
+  select(ATTENDMONTH_W70,ATTENDONLINE_W70,COVIDTHREAT_b_W70)%>%
+  filter(if_all(everything(), ~ .x != 99)) %>%
+  mutate(
+    attend_online = ifelse(ATTENDONLINE_W70 == 1, 1, 0),
+    attend_inperson = ifelse(ATTENDMONTH_W70 == 1, 1, 0),
+    threat = 4-COVIDTHREAT_b_W70
+  )
+
+
+model_h1a <- glm(attend_online ~ threat, data = df, family = binomial)
+summary(model_h1a)
+df$pred <- predict(model_h1a, type = "response")
+```
+
+```{r}
+ggplot(df, aes(x = factor(threat), y = pred)) +
+  stat_summary(fun = mean, geom = "bar", fill = "#4B9CD3", width = 0.6) +
+  geom_text(stat = "summary", fun = mean,
+            aes(label = round(..y.., 2)), vjust = -0.5) +
+  labs(
+    title = "Predicted Probability of Online Worship by Perceived Threat",
+    x = "Perceived Threat (1 = Low, 3 = High)",
+    y = "Predicted Probability"
+  ) +
+  theme_minimal()
+model_h1b <- glm(attend_inperson ~ threat,
+                 data = df,
+                 family = binomial)
+
+summary(model_h1b)
+```
+
+```{r}
+
+#| label: create respond variable attend
+
+library(nnet)
+w70_cp <- w70 %>% 
+  filter(F_RELIG %in% c(1,2)) %>% 
+  filter(ATTENDMONTH_W70 != 99, ATTENDONLINE_W70 != 99) %>%
+  mutate(attend = case_when(
+    ATTENDMONTH_W70 == 1 & ATTENDONLINE_W70 == 1 ~ "Both",
+    ATTENDMONTH_W70 == 1 & ATTENDONLINE_W70 == 2 ~ "In-person only",
+    ATTENDMONTH_W70 == 2 & ATTENDONLINE_W70 == 1 ~ "Online only",
+    ATTENDMONTH_W70 == 2 & ATTENDONLINE_W70 == 2 ~ "Neither"
+  )) %>%
+  mutate(attend = factor(attend, 
+                         levels = c("In-person only", "Online only", "Both", "Neither")))
+w70_cp$attend <- relevel(w70_cp$attend, ref = "In-person only")
+# ------------------------------------------------------------
+# ATTENDMONTH_W70 = attend mass in person
+# ATTENDONLINE_W70 = attend mass online
+#
+# attend codes:
+# 1 -> attend in person = 1, online = 1  (attend both)
+# 2 -> attend in person = 1, online = 2  (only in person)
+# 3 -> attend in person = 2, online = 1  (only online)
+# 4 -> attend in person = 2, online = 2  (attend neither)
+#
+# Note: rows with v1 == 99 or v2 == 99 are removed
+# ------------------------------------------------------------
+
+```
+
+```{r}
+#| label: Hypothesis 1
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    ATTENDCONF_W70, COVIDCONG3_W70, COVIDCONG4_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    CTKNOW1_W70, CONTACTTRAC1_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70
+  ), ~ . != 99))
+
+# Step 2: 转为 factor
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    ATTENDCONF_W70, COVIDCONG3_W70, COVIDCONG4_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    CTKNOW1_W70, CONTACTTRAC1_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h1 <- c(
+  "ATTENDCONF_W70", "COVIDCONG3_W70", "COVIDCONG4_W70",
+  "CONGRESTRICT2_a_W70", "CONGRESTRICT2_b_W70", "CONGRESTRICT2_c_W70",
+  "CTKNOW1_W70", "CONTACTTRAC1_W70",
+  "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+  "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h1], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h1, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h1 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合模型
+model_h1 <- multinom(formula_h1, data = w70_cp_clean)
+
+# Step 7: 输出 summary 与显著性
+summary(model_h1)
+
+z <- summary(model_h1)$coefficients / summary(model_h1)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+```
+
+
+```{r}
+#| label: Hypothesis 2
+
+# Step 1: 清理掉含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    COVIDTHREAT_a_W70, COVIDTHREAT_b_W70, COVIDTHREAT_c_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    COVIDLESSON1_W70, COVIDLESSON2_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    COVIDCONG4_W70
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    COVIDTHREAT_a_W70, COVIDTHREAT_b_W70, COVIDTHREAT_c_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    COVIDLESSON1_W70, COVIDLESSON2_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    COVIDCONG4_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别为 In-person only
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h2 <- c(
+  "COVIDTHREAT_a_W70", "COVIDTHREAT_b_W70", "COVIDTHREAT_c_W70",
+  "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+  "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70",
+  "COVIDLESSON1_W70", "COVIDLESSON2_W70",
+  "CONGRESTRICT2_a_W70", "CONGRESTRICT2_b_W70", "CONGRESTRICT2_c_W70",
+  "COVIDCONG4_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h2], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h2, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h2 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h2 <- multinom(formula_h2, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h2)
+
+z <- summary(model_h2)$coefficients / summary(model_h2)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+```
+
+```{r}
+#| label: Hypothesis 3
+
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    SNSUSE_W70, F_ACSWEB, ONLINESERV_W70,
+    F_EDUCCAT2, F_AGECAT, F_INCOME_RECODE
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    SNSUSE_W70, F_ACSWEB, ONLINESERV_W70,
+    F_EDUCCAT2, F_AGECAT, F_INCOME_RECODE
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h3 <- c(
+  "SNSUSE_W70", "F_ACSWEB", "ONLINESERV_W70",
+  "F_EDUCCAT2", "F_AGECAT", "F_INCOME_RECODE"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h3], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h3, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h3 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h3 <- multinom(formula_h3, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h3)
+
+z <- summary(model_h3)$coefficients / summary(model_h3)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+```{r}
+#| label: Hypothesis 4
+
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    ONLINESERV_W70,
+    F_ACSWEB,
+    COVIDCONG2_W70, COVIDCONG3_W70, COVIDCONG4_W70,
+    CONGDONATE_W70
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    ONLINESERV_W70,
+    F_ACSWEB,
+    COVIDCONG2_W70, COVIDCONG3_W70, COVIDCONG4_W70,
+    CONGDONATE_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h4 <- c(
+  "ONLINESERV_W70",
+  "F_ACSWEB", 
+  "COVIDCONG2_W70", "COVIDCONG3_W70", "COVIDCONG4_W70",
+  "CONGDONATE_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h4], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h4, invalid_vars)
+
+# Step 5: 动态建立公式
+formula_h4 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h4 <- multinom(formula_h4, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h4)
+
+z <- summary(model_h4)$coefficients / summary(model_h4)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+```{r}
+#| label: Hypothesis 5
+
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    CONGDONATE_W70,
+    COVIDCONG4_W70, COVIDCONG3_W70, COVIDCONG2_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    F_METRO
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    CONGDONATE_W70,
+    COVIDCONG4_W70, COVIDCONG3_W70, COVIDCONG2_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    F_METRO
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h5 <- c(
+  "CONGDONATE_W70",
+  "COVIDCONG4_W70", "COVIDCONG3_W70", "COVIDCONG2_W70",
+  "CONGRESTRICT2_a_W70", "CONGRESTRICT2_b_W70", "CONGRESTRICT2_c_W70",
+  "F_METRO"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h5], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h5, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h5 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h5 <- multinom(formula_h5, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h5)
+
+z <- summary(model_h5)$coefficients / summary(model_h5)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+```{r}
+#| label: Hypothesis 6
+
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    CONGRESTRICT2_d_W70,
+    COVIDCONG4_W70, COVIDCONG3_W70,
+    CONGRESTRICT1_a_W70, CONGRESTRICT1_b_W70, CONGRESTRICT1_c_W70,
+    ATTENDCONF_W70
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    CONGRESTRICT2_d_W70,
+    COVIDCONG4_W70, COVIDCONG3_W70,
+    CONGRESTRICT1_a_W70, CONGRESTRICT1_b_W70, CONGRESTRICT1_c_W70,
+    ATTENDCONF_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h6 <- c(
+  "CONGRESTRICT2_d_W70",
+  "COVIDCONG4_W70", "COVIDCONG3_W70",
+  "CONGRESTRICT1_a_W70", "CONGRESTRICT1_b_W70", "CONGRESTRICT1_c_W70",
+  "ATTENDCONF_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h6], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h6, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h6 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h6 <- multinom(formula_h6, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h6)
+
+z <- summary(model_h6)$coefficients / summary(model_h6)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+```{r}
+#| label: Hypothesis 7
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    CTKNOW1_W70, CONTACTTRAC1_W70,
+    COVIDLESSON1_W70, COVIDLESSON2_W70,
+    COVIDCONG3_W70, COVIDCONG4_W70, COVIDCONG2_W70
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    CTKNOW1_W70, CONTACTTRAC1_W70,
+    COVIDLESSON1_W70, COVIDLESSON2_W70,
+    COVIDCONG3_W70, COVIDCONG4_W70, COVIDCONG2_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h7 <- c(
+  "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+  "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70",
+  "CTKNOW1_W70", "CONTACTTRAC1_W70",
+  "COVIDLESSON1_W70", "COVIDLESSON2_W70",
+  "COVIDCONG3_W70", "COVIDCONG4_W70", "COVIDCONG2_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h7], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h7, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h7 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h7 <- multinom(formula_h7, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h7)
+
+z <- summary(model_h7)$coefficients / summary(model_h7)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+```{r}
+#| label: Hypothesis 8
+
+
+# Step 1: 清理含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    CONGDONATE_W70,
+    ATTENDCONF_W70,
+    COVIDTHREAT_a_W70, COVIDTHREAT_b_W70, COVIDTHREAT_c_W70,
+    CONGRESTRICT2_d_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    ONLINESERV_W70,
+    F_RELIG
+  ), ~ . != 99))
+
+# Step 2: 转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    CONGDONATE_W70,
+    ATTENDCONF_W70,
+    COVIDTHREAT_a_W70, COVIDTHREAT_b_W70, COVIDTHREAT_c_W70,
+    CONGRESTRICT2_d_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    ONLINESERV_W70,
+    F_RELIG
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h8 <- c(
+  "CONGDONATE_W70",
+  "ATTENDCONF_W70",
+  "COVIDTHREAT_a_W70", "COVIDTHREAT_b_W70", "COVIDTHREAT_c_W70",
+  "CONGRESTRICT2_d_W70",
+  "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+  "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70",
+  "ONLINESERV_W70",
+  "F_RELIG"
+)
+
+level_counts <- sapply(w70_cp_clean[, vars_h8], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h8, invalid_vars)
+
+# Step 5: 动态 formula （带宗派交互项）
+# 如果你想显式建模交互，可添加 "+ F_RELIG:CONGDONATE_W70" 等项
+formula_h8 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归
+model_h8 <- multinom(formula_h8, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h8)
+
+z <- summary(model_h8)$coefficients / summary(model_h8)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
