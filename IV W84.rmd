@@ -1,0 +1,99 @@
+---
+title: "important variable W84"
+author: "Jizhou Zhang"
+date: "2025-11-18"
+output: html_document
+---
+
+```{r}
+## Load packages ----
+library(tidyverse)
+
+## Example: read your ATP data (update file name/path as needed) ----
+## For W84 .sav use haven if you're in R:
+# library(haven)
+# atp_w84 <- read_sav("ATP W84.sav")
+
+## 1. Table of important variables by hypothesis ----
+
+hypothesis_table <- tibble::tribble(
+  ~Hypothesis, ~HBM_construct, ~Key_variables, ~Why_important,
+
+  "H1: Perceived susceptibility → online vs in-person",
+  "Perceived susceptibility",
+  "ATTENDCONF; CONGRESTRICT2abc",
+  "Strong differences by online vs in-person; directly measure perceived chance of getting/spreading COVID.",
+
+  "H2: Perceived severity → online worship",
+  "Perceived severity",
+  "COVIDTHREAT",
+  "Best direct measure of how serious people think COVID is; large mean differences for online vs not online.",
+
+  "H3: Self-efficacy → online worship",
+  "Digital self-efficacy (proxy)",
+  "SNSUSE",
+  "Social media use is a proxy for digital comfort and confidence using online platforms.",
+
+  "H4: Direct structural facilitators → online worship",
+  "Direct structural access",
+  "F_ASCWEB; COVIDCONG2; COVIDCONG3",
+  "Internet access and whether the congregation streams / limits capacity strongly shape online worship.",
+
+  "H5: Indirect structural barriers → online worship",
+  "Indirect structural barriers to in-person",
+  "Congregation operating status; requires 6ft distance; requires masks",
+  "Closures and strict rules make in-person harder and are strongly related to watching online.",
+
+  "H6: Opposition to restrictions → in-person worship",
+  "Opposition to embodied restrictions",
+  "CONGRESTRICT2d (singing limits)",
+  "Disagreement with limiting/prohibiting singing signals preference for in-person worship.",
+
+  "H7: Cues to action → online worship",
+  "Cues / triggers",
+  "SERMONISSUEc; CTKNOW1",
+  "Hearing sermons about COVID and knowing about contact tracing act as cues that push people toward online options.",
+
+  "H8: Denominational differences (Catholics vs Protestants)",
+  "Group moderation (denomination)",
+  "Same key variables from H1–H7 plus denomination indicator",
+  "Compare effects of susceptibility, severity, structural factors, opposition, and cues between Catholics and Protestants."
+)
+
+## Look at the table
+hypothesis_table
+# knitr::kable(hypothesis_table, caption = "Important variables for each hypothesis")
+
+
+
+## 2. Named list of variables for each hypothesis ----
+## (You can use this to select variables from atp_w70 or atp_w84)
+
+hvars <- list(
+  H1 = c("ATTENDCONF", "CONGRESTRICT2abc"),
+  H2 = c("COVIDTHREAT"),
+  H3 = c("SNSUSE"),
+  H4 = c("F_ASCWEB", "COVIDCONG2", "COVIDCONG3"),
+  H5 = c("CONG_OPER_STATUS",    # replace with actual variable name used in your data
+         "CONG_REQUIRE_6FT",    # e.g. congregation requires 6ft distance
+         "CONG_REQUIRE_MASKS"), # e.g. congregation requires masks
+  H6 = c("CONGRESTRICT2d"),
+  H7 = c("SERMONISSUEc", "CTKNOW1"),
+  H8 = c("DENOM",       # e.g. Catholic vs Protestant indicator
+         "ATTENDCONF", "CONGRESTRICT2abc",
+         "COVIDTHREAT",
+         "F_ASCWEB", "COVIDCONG2", "COVIDCONG3",
+         "CONG_OPER_STATUS", "CONG_REQUIRE_6FT", "CONG_REQUIRE_MASKS",
+         "CONGRESTRICT2d",
+         "SERMONISSUEc", "CTKNOW1")
+)
+
+## Example: select all variables used in H1 + the outcomes for a model ----
+## (Update outcome name to your actual DV, e.g. ATTENDONLINE_W84)
+# atp_w84_H1 <- atp_w84 |>
+#   select(all_of(c("ATTENDONLINE_W84", hvars$H1)))
+
+## Example: loop over hypotheses just to check if variables exist in the data ----
+# map(hvars, ~ .x[.x %in% names(atp_w84)])
+```
+

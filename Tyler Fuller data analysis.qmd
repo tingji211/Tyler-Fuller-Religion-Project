@@ -8,6 +8,8 @@ editor: visual
 library(haven)
 library(tidyverse)
 library(VGAM)
+library(broom)
+library(gtsummary)
 ```
 
 ```{r}
@@ -185,10 +187,10 @@ w70_cp %>%
 ```{r}
 #| label: create clean dataset with attendmonth,attendonline (1/0)
 
-w70_cp_clean <- w70_cp
-w70_cp_clean$ATTENDMONTH_W70 <- as.character(w70_cp_clean$ATTENDMONTH_W70)
-w70_cp_clean$ATTENDMONTH_bin <- ifelse(
-  w70_cp_clean$ATTENDMONTH_W70 == "1",
+w70_cp_attend <- w70_cp
+w70_cp_attend$ATTENDMONTH_W70 <- as.character(w70_cp_attend$ATTENDMONTH_W70)
+w70_cp_attend$ATTENDMONTH_bin <- ifelse(
+  w70_cp_attend$ATTENDMONTH_W70 == "1",
   1, 0
 )
 ```
@@ -219,11 +221,11 @@ ggplot(w70_cp %>% filter(!is.na(COVIDCONG2_W70)), aes(x = factor(F_RELIG), fill 
 
 
 # analysis
-model_1b <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_clean, family = binomial, weights = WEIGHT_W70)
+model_1b <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_attend, family = binomial, weights = WEIGHT_W70)
 
 summary(model_1b)
 
-model_1 <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_clean, family = binomial)
+model_1 <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_attend, family = binomial)
 
 summary(model_1)
 
@@ -263,7 +265,7 @@ ggplot(w70_cp%>% filter(!is.na(COVIDCONG3_W70)), aes(x = factor(F_RELIG), fill =
 
 model_2 <- glm(
   ATTENDMONTH_bin ~ factor(COVIDCONG3_W70),
-  data = w70_cp_clean,
+  data = w70_cp_attend,
   family = binomial
 )
 summary(model_2)
@@ -302,7 +304,7 @@ ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_a_W70)), aes(x = factor(F_RELIG), f
 
 
 model_3 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_a_W70),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_3)
 ```
@@ -341,7 +343,7 @@ ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_b_W70)), aes(x = factor(F_RELIG), f
 
 
 model_4 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_b_W70),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_4)
 ```
@@ -380,7 +382,7 @@ ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_c_W70)), aes(x = factor(F_RELIG), f
 
 
 model_5 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_c_W70),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_5)
 ```
@@ -420,11 +422,11 @@ ggplot(
   theme_minimal()
 
 # 确保是字符型
-w70_cp_clean$F_ACSWEB <- as.character(w70_cp_clean$F_ACSWEB)
+w70_cp_attend$F_ACSWEB <- as.character(w70_cp_attend$F_ACSWEB)
 
 
 model_6 <- glm(ATTENDMONTH_bin ~ factor(F_ACSWEB),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_6)
 ```
@@ -464,51 +466,12 @@ ggplot(
 
 
 model_7 <- glm(ATTENDMONTH_bin ~ factor(SNSUSE_W70),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_7)
 ```
 
 
-# hypothesis test
-```{r}
-#| label: hypothesis 1 a,b testing
-online <-w70$ATTENDONLINE_W70
-inperson <- w70$ATTENDMONTH_W70
-threat <- w70$COVIDTHREAT_b_W70
-
-df <- w70 %>%
-  select(ATTENDMONTH_W70,ATTENDONLINE_W70,COVIDTHREAT_b_W70)%>%
-  filter(if_all(everything(), ~ .x != 99)) %>%
-  mutate(
-    attend_online = ifelse(ATTENDONLINE_W70 == 1, 1, 0),
-    attend_inperson = ifelse(ATTENDMONTH_W70 == 1, 1, 0),
-    threat = 4-COVIDTHREAT_b_W70
-  )
-
-
-model_h1a <- glm(attend_online ~ threat, data = df, family = binomial)
-summary(model_h1a)
-df$pred <- predict(model_h1a, type = "response")
-```
-
-```{r}
-ggplot(df, aes(x = factor(threat), y = pred)) +
-  stat_summary(fun = mean, geom = "bar", fill = "#4B9CD3", width = 0.6) +
-  geom_text(stat = "summary", fun = mean,
-            aes(label = round(..y.., 2)), vjust = -0.5) +
-  labs(
-    title = "Predicted Probability of Online Worship by Perceived Threat",
-    x = "Perceived Threat (1 = Low, 3 = High)",
-    y = "Predicted Probability"
-  ) +
-  theme_minimal()
-model_h1b <- glm(attend_inperson ~ threat,
-                 data = df,
-                 family = binomial)
-
-summary(model_h1b)
-```
 
 ```{r}
 
@@ -527,6 +490,7 @@ w70_cp <- w70 %>%
   mutate(attend = factor(attend, 
                          levels = c("In-person only", "Online only", "Both", "Neither")))
 w70_cp$attend <- relevel(w70_cp$attend, ref = "In-person only")
+table(w70_cp$attend)
 # ------------------------------------------------------------
 # ATTENDMONTH_W70 = attend mass in person
 # ATTENDONLINE_W70 = attend mass online
@@ -541,6 +505,23 @@ w70_cp$attend <- relevel(w70_cp$attend, ref = "In-person only")
 # ------------------------------------------------------------
 
 ```
+
+```{r}
+attend_counts <- w70_cp %>%
+  count(attend)
+
+# 绘图
+ggplot(attend_counts, aes(x = attend, y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = n), vjust = -0.3, size = 4) +
+  labs(
+    title = "Attendance Patterns",
+    x = "Attendance Type",
+    y = "Number of Respondents"
+  ) +
+  theme_minimal()
+```
+
 
 ```{r}
 #| label: Hypothesis 1
@@ -596,9 +577,111 @@ model_h1 <- multinom(formula_h1, data = w70_cp_clean)
 # Step 7: 输出 summary 与显著性
 summary(model_h1)
 
-z <- summary(model_h1)$coefficients / summary(model_h1)$standard.errors
-p <- (1 - pnorm(abs(z), 0, 1)) * 2
-round(p, 4)
+# check p-values to find statstical significant variables
+tidy(model_h1, conf.int = TRUE) %>% print(n = 42)
+```
+
+```{r}
+#| label: predictor table for h1 w70
+
+library(dplyr)
+library(nnet)
+library(gtsummary)
+
+w70_h1 <- w70_cp_clean %>%
+  mutate(
+    # 1️⃣ 出席信心
+    ATTENDCONF_W70 = factor(
+      ATTENDCONF_W70,
+      levels = c(1, 2, 3, 4),
+      labels = c("Very confident",
+                 "Somewhat confident",
+                 "Not too confident",
+                 "Not at all confident")
+    ),
+
+    # 2️⃣ 教会防疫行动
+    COVIDCONG3_W70 = factor(
+      COVIDCONG3_W70,
+      levels = c(1, 2, 3, 4),
+      labels = c("No actions",
+                 "Some actions",
+                 "Many actions",
+                 "Extensive actions")
+    ),
+
+    # 3️⃣ 教会限制措施
+    CONGRESTRICT2_c_W70 = factor(
+      CONGRESTRICT2_c_W70,
+      levels = c(1, 2, 3, 4),
+      labels = c("No restrictions",
+                 "Minor restrictions",
+                 "Major restrictions",
+                 "Severe restrictions")
+    ),
+
+    # 4️⃣ 接触追踪
+    CONTACTTRAC1_W70 = factor(
+      CONTACTTRAC1_W70,
+      levels = c(1, 2),
+      labels = c("Support contact tracing",
+                 "Do not support")
+    ),
+
+    # 5️⃣ 布道主题 c: COVID 防控
+    SERMONISSUE_c_W70 = factor(
+      SERMONISSUE_c_W70,
+      levels = c(1, 2),
+      labels = c("Heard sermons on limiting COVID spread",
+                 "Did not hear such sermons")
+    ),
+
+    # 6️⃣ 布道主题 f: 其他议题
+    SERMONISSUE_f_W70 = factor(
+      SERMONISSUE_f_W70,
+      levels = c(1, 2),
+      labels = c("Heard sermons on other topics",
+                 "Did not hear such sermons")
+    ) 
+  )
+
+#set "did not hear" as reference 
+w70_h1$SERMONISSUE_c_W70 <- relevel(
+  w70_h1$SERMONISSUE_c_W70,
+  ref = "Did not hear such sermons"
+)
+w70_h1$SERMONISSUE_f_W70 <- relevel(
+  w70_h1$SERMONISSUE_f_W70,
+  ref = "Did not hear such sermons"
+)
+w70_h1$CONTACTTRAC1_W70 <- relevel(
+  w70_h1$CONTACTTRAC1_W70,
+  ref = "Do not support"
+)
+
+model_h1_sub <- multinom(
+  attend ~ ATTENDCONF_W70 + COVIDCONG3_W70 +
+    CONGRESTRICT2_c_W70 + CONTACTTRAC1_W70 +
+    SERMONISSUE_c_W70 + SERMONISSUE_f_W70,
+  data = w70_h1
+)
+
+tbl_regression(
+  model_h1_sub,
+  exponentiate = TRUE,
+  label = list(
+    ATTENDCONF_W70 ~ "Confidence in attending safely",
+    COVIDCONG3_W70 ~ "Congregation’s COVID safety actions",
+    CONGRESTRICT2_c_W70 ~ "Congregational restrictions",
+    CONTACTTRAC1_W70 ~ "Contact tracing support",
+    SERMONISSUE_c_W70 ~ "Sermon topic: limiting COVID spread",
+    SERMONISSUE_f_W70 ~ "Sermon topic: other issues"
+  )
+) %>%
+  modify_caption("**Predictors of Online and Hybrid Attendance (Refused Responses Removed)**") %>%
+  bold_labels()
+
+
 ```
 
 
@@ -1019,4 +1102,400 @@ p <- (1 - pnorm(abs(z), 0, 1)) * 2
 round(p, 4)
 
 ```
+-----------------------------------------------------------
+
+```{r}
+w84_cp <- w84 %>% 
+  filter(F_RELIG %in% c(1,2)) %>% 
+  filter(ATTENDMONTH_W84 != 99, ATTENDONLINE_W84 != 99) %>%
+  mutate(attend = case_when(
+    ATTENDMONTH_W84 == 1 & ATTENDONLINE_W84 == 1 ~ "Both",
+    ATTENDMONTH_W84 == 1 & ATTENDONLINE_W84 == 2 ~ "In-person only",
+    ATTENDMONTH_W84 == 2 & ATTENDONLINE_W84 == 1 ~ "Online only",
+    ATTENDMONTH_W84 == 2 & ATTENDONLINE_W84 == 2 ~ "Neither"
+  )) %>%
+  mutate(attend = factor(attend, 
+                         levels = c("In-person only", "Online only", "Both", "Neither")))
+w84_cp$attend <- relevel(w84_cp$attend, ref = "In-person only")
+```
+
+
+```{r}
+#| label: Hypothesis 1 Wave 84
+
+
+# Step 1: 清理含有 99 的观测
+w84_cp_clean <- w84_cp %>%
+  filter(if_all(c(
+    COVIDSPIR_W84,
+    COVIDCONG3_W84,
+    COVIDCONG4_W84
+  ), ~ . != 99))
+
+# Step 2: 转为因子
+w84_cp_clean <- w84_cp_clean %>%
+  mutate(across(c(
+    COVIDSPIR_W84,
+    COVIDCONG3_W84,
+    COVIDCONG4_W84
+  ), as.factor))
+
+# Step 3: 设置 reference 类别（H1 要比较“仅线下” vs 线上/混合）
+w84_cp_clean$attend <- relevel(w84_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_84h1 <- c(
+  "COVIDSPIR_W84",
+  "COVIDCONG3_W84",
+  "COVIDCONG4_W84"
+)
+
+level_counts <- sapply(w84_cp_clean[, vars_84h1], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_84h1, invalid_vars)
+
+# Step 5: 动态 formula
+formula_84h1 <- as.formula(
+  paste("attend ~", paste(valid_vars, collapse = " + "))
+)
+
+# Step 6: 拟合多项逻辑回归模型
+model_84h1 <- multinom(formula_84h1, data = w84_cp_clean)
+
+# Step 7: 输出结果 + 计算 p 值
+summary(model_84h1)
+
+z <- summary(model_84h1)$coefficients / summary(model_84h1)$standard.errors
+p <- (1 - pnorm(abs(z))) * 2
+round(p, 4)
+
+```
+
+```{r}
+#| label: predictor table for h1 w84
+
+library(dplyr)
+library(nnet)
+library(gtsummary)
+
+# Step 1: 构建 w84_h1 数据集并添加 labels
+w84_h1 <- w84_cp_clean %>%
+  mutate(
+    # 1️⃣ 感知严重性（COVID severity）
+    COVIDSPIR_W84 = factor(
+      COVIDSPIR_W84,
+      levels = c(1, 2, 3, 4, 99),
+      labels = c(
+        "Stronger",
+        "Weaker",
+        "No change",
+        "Not religious",
+        "Refused"
+      )
+    ),
+
+    # 2️⃣ 目前教会开放状态（perceived susceptibility proxy）
+    COVIDCONG3_W84 = factor(
+      COVIDCONG3_W84,
+      levels = c(1, 2, 3, 4, 99),
+      labels = c(
+        "Open as before COVID",
+        "Open but with changes",
+        "Closed to in-person services",
+        "Not sure",
+        "Refused"
+      )
+    ),
+
+    # 3️⃣ 认为教会应该开放的状态（behavioral susceptibility）
+    COVIDCONG4_W84 = factor(
+      COVIDCONG4_W84,
+      levels = c(1, 2, 3, 99),
+      labels = c(
+        "Open as before COVID",
+        "Open but with changes",
+        "Closed to in-person services",
+        "Refused"
+      )
+    )
+  )
+
+# Step 2: 设置 reference levels（选最不觉得 COVID 危险的作为 baseline）
+w84_h1$attend <- relevel(w84_h1$attend, ref = "In-person only")
+
+w84_h1$COVIDSPIR_W84 <- relevel(
+  w84_h1$COVIDSPIR_W84,
+  ref = "No change"
+)
+
+w84_h1$COVIDCONG3_W84 <- relevel(
+  w84_h1$COVIDCONG3_W84,
+  ref = "Open as before COVID"
+)
+
+w84_h1$COVIDCONG4_W84 <- relevel(
+  w84_h1$COVIDCONG4_W84,
+  ref = "Open as before COVID"
+)
+
+# Step 3: Multinomial logistic regression
+model_w84_h1 <- multinom(
+  attend ~ COVIDSPIR_W84 + COVIDCONG3_W84 + COVIDCONG4_W84,
+  data = w84_h1
+)
+
+# Step 4: gtsummary 输出（与 W70 样式一致）
+tbl_regression(
+  model_w84_h1,
+  exponentiate = TRUE,
+  label = list(
+    COVIDSPIR_W84 ~ "Perceived severity of COVID-19",
+    COVIDCONG3_W84 ~ "Current operating status of house of worship",
+    COVIDCONG4_W84 ~ "Preferred operating status of house of worship"
+  )
+) %>%
+  modify_caption("**Wave 84 – Predictors of Online and Hybrid Attendance (Susceptibility & Severity)**") %>%
+  bold_labels()
+
+
+```
+
+```{r}
+#| label: predictor table for h2 w84
+
+
+# Step 1: 构建数据并添加 labels
+w84_h2 <- w84_cp_clean %>%
+  mutate(
+    # 1️⃣ COVID severity
+    COVIDSPIR_W84 = factor(
+      COVIDSPIR_W84,
+      levels = c(1, 2, 3, 4, 99),
+      labels = c(
+        "Stronger",
+        "Weaker",
+        "No change",
+        "Not religious",
+        "Refused"
+      )
+    )
+  )
+
+# Step 2: 设置 reference level（最不觉得 COVID 严重 = baseline）
+w84_h2$attend <- relevel(w84_h2$attend, ref = "In-person only")
+
+w84_h2$COVIDSPIR_W84 <- relevel(
+  w84_h2$COVIDSPIR_W84,
+  ref = "No change"
+)
+
+# Step 3: Multinomial logistic regression
+model_w84_h2 <- multinom(
+  attend ~ COVIDSPIR_W84,
+  data = w84_h2
+)
+
+# Step 4: gtsummary 输出（与 W70 完全相同风格）
+tbl_regression(
+  model_w84_h2,
+  exponentiate = TRUE,
+  label = list(
+    COVIDSPIR_W84 ~ "Perceived severity of COVID-19"
+  )
+) %>%
+  modify_caption("**Wave 84 – Predictors of Online and Hybrid Attendance (H2: COVID Severity)**") %>%
+  bold_labels()
+
+
+
+```
+
+```{r}
+#| label: predictor table for h3 w84
+
+# Step 1: 构建数据并加上 labels
+w84_h3 <- w84_cp_clean %>%
+  mutate(
+    # 1️⃣ 计划参加复活节（是否线下经验更强）
+    ESTR21_W84 = factor(
+      ESTR21_W84,
+      levels = c(1, 2, 99),
+      labels = c(
+        "Yes – plans in-person Easter",
+        "No – does not plan in-person Easter",
+        "Refused"
+      )
+    ),
+
+    # 2️⃣ 通常是否线下参加复活节（宗教习惯）
+    ESTRTYP_W84 = factor(
+      ESTRTYP_W84,
+      levels = c(1, 2, 99),
+      labels = c(
+        "Yes – normally attends in-person Easter",
+        "No – does not normally attend Easter",
+        "Refused"
+      )
+    )
+  )
+
+# Step 2: baseline settings
+w84_h3$attend <- relevel(w84_h3$attend, ref = "In-person only")
+
+# 每个变量的 baseline = “No”（数字经验较低的组）
+w84_h3$ESTR21_W84 <- relevel(
+  w84_h3$ESTR21_W84,
+  ref = "No – does not plan in-person Easter"
+)
+
+w84_h3$ESTRTYP_W84 <- relevel(
+  w84_h3$ESTRTYP_W84,
+  ref = "No – does not normally attend Easter"
+)
+
+# Step 3: Multinomial model
+model_w84_h3 <- multinom(
+  attend ~ ESTR21_W84 + ESTRTYP_W84,
+  data = w84_h3
+)
+
+# Step 4: gtsummary table
+tbl_regression(
+  model_w84_h3,
+  exponentiate = TRUE,
+  label = list(
+    ESTR21_W84 ~ "Plans to attend in-person Easter",
+    ESTRTYP_W84 ~ "Normally attends in-person Easter"
+  )
+) %>%
+  modify_caption("**Wave 84 – H3: Self-Efficacy / Digital Religious Experience**") %>%
+  bold_labels()
+
+```
+
+```{r}
+#| label: predictor table for h4 w84
+
+# Step 1: 构建数据并添加 labels
+w84_h4 <- w84_cp_clean %>%
+  mutate(
+    # 1️⃣ Congregation streaming online?
+    COVIDCONG2_W84 = factor(
+      COVIDCONG2_W84,
+      levels = c(1, 2, 99),
+      labels = c(
+        "Yes – streaming/recording services",
+        "No – not streaming/recording",
+        "Refused"
+      )
+    ),
+
+    # 2️⃣ Congregation limiting communal singing
+    CONGRESTRICT1_d_W84 = factor(
+      CONGRESTRICT1_d_W84,
+      levels = c(1, 2, 3, 99),
+      labels = c(
+        "Yes – limiting/prohibiting communal singing",
+        "No – not limiting singing",
+        "Not sure",
+        "Refused"
+      )
+    )
+  )
+
+# Step 2: baseline settings
+w84_h4$attend <- relevel(w84_h4$attend, ref = "In-person only")
+
+# baseline = the least "COVID cautious" level
+w84_h4$COVIDCONG2_W84 <- relevel(
+  w84_h4$COVIDCONG2_W84,
+  ref = "No – not streaming/recording"
+)
+
+w84_h4$CONGRESTRICT1_d_W84 <- relevel(
+  w84_h4$CONGRESTRICT1_d_W84,
+  ref = "No – not limiting singing"
+)
+
+# Step 3: Multinomial logistic regression
+model_w84_h4 <- multinom(
+  attend ~ COVIDCONG2_W84 + CONGRESTRICT1_d_W84,
+  data = w84_h4
+)
+
+# Step 4: gt
+
+```
+
+```{r}
+# =========================================================
+# H5: Structural Barriers (Wave 84)
+# =========================================================
+
+# Step 1: 清理含有 99 的观测
+w84_h5_clean <- w84_cp %>%
+  filter(if_all(c(
+    COVIDCONG3_W84,
+    CONGRESTRICT1_c_W84,
+    CONGRESTRICT1_b_W84
+  ), ~ . != 99))
+
+# Step 2: 转为因子
+w84_h5_clean <- w84_h5_clean %>%
+  mutate(across(c(
+    COVIDCONG3_W84,
+    CONGRESTRICT1_c_W84,
+    CONGRESTRICT1_b_W84
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w84_h5_clean$attend <- relevel(w84_h5_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h5 <- c(
+  "COVIDCONG3_W84",
+  "CONGRESTRICT1_c_W84",
+  "CONGRESTRICT1_b_W84"
+)
+
+level_counts_h5 <- sapply(w84_h5_clean[, vars_h5], nlevels)
+invalid_vars_h5 <- names(level_counts_h5[level_counts_h5 <= 1])
+
+if (length(invalid_vars_h5) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ",
+          paste(invalid_vars_h5, collapse = ", "))
+}
+
+valid_vars_h5 <- setdiff(vars_h5, invalid_vars_h5)
+
+# Step 5: 动态 formula
+formula_h5 <- as.formula(
+  paste("attend ~", paste(valid_vars_h5, collapse = " + "))
+)
+
+# Step 6: 拟合多项逻辑回归
+model_h5 <- multinom(formula_h5, data = w84_h5_clean)
+
+# Step 7: 输出 coef + p-values
+summary(model_h5)
+
+z_h5 <- summary(model_h5)$coefficients / summary(model_h5)$standard.errors
+p_h5 <- 2 * (1 - pnorm(abs(z_h5)))
+
+round(p_h5, 4)
+
+```
+
+
+
+
+
+
+
+
 
