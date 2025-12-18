@@ -1,18 +1,26 @@
 ---
 title: "Tyler Fuller data analysis"
-format: html
+format: docx
 editor: visual
 ---
 
 ```{r}
 library(haven)
 library(tidyverse)
+library(VGAM)
+library(broom)
+library(gtsummary)
+library(nnet)
 ```
+
+# read files
 
 ```{r}
 w70 <- read_sav("ATP W70.sav")
 w84 <- read_sav("ATP W84.sav")
 ```
+
+# EDA
 
 ```{r}
 #| label: initial plots for presentation 1
@@ -149,75 +157,6 @@ ggplot(df2, aes(x = factor(F_GENDER), fill = factor(ATTENDONLINE_W84))) +
 ```
 
 ```{r}
-#| label: hypothesis 1 a,b testing
-online <-w70$ATTENDONLINE_W70
-inperson <- w70$ATTENDMONTH_W70
-threat <- w70$COVIDTHREAT_b_W70
-
-df <- w70 %>%
-  select(ATTENDMONTH_W70,ATTENDONLINE_W70,COVIDTHREAT_b_W70)%>%
-  filter(if_all(everything(), ~ .x != 99)) %>%
-  mutate(
-    attend_online = ifelse(ATTENDONLINE_W70 == 1, 1, 0),
-    attend_inperson = ifelse(ATTENDMONTH_W70 == 1, 1, 0),
-    threat = 4-COVIDTHREAT_b_W70
-  )
-
-
-model_h1a <- glm(attend_online ~ threat, data = df, family = binomial)
-summary(model_h1a)
-df$pred <- predict(model_h1a, type = "response")
-```
-
-```{r}
-ggplot(df, aes(x = factor(threat), y = pred)) +
-  stat_summary(fun = mean, geom = "bar", fill = "#4B9CD3", width = 0.6) +
-  geom_text(stat = "summary", fun = mean,
-            aes(label = round(..y.., 2)), vjust = -0.5) +
-  labs(
-    title = "Predicted Probability of Online Worship by Perceived Threat",
-    x = "Perceived Threat (1 = Low, 3 = High)",
-    y = "Predicted Probability"
-  ) +
-  theme_minimal()
-model_h1b <- glm(attend_inperson ~ threat,
-                 data = df,
-                 family = binomial)
-
-summary(model_h1b)
-```
-
-```{r}
-
-#| label: create respond variable attend
-# w70_cp <- w70 %>%
-#   filter(F_RELIG %in% c(1,2)) %>%
-#   filter(ATTENDMONTH_W70 != 99, ATTENDONLINE_W70 != 99) %>%
-#   mutate(attend = (ATTENDMONTH_W70 - 1) * 2 + ATTENDONLINE_W70)
-# w70_cp$attend <- as.factor(w70_cp$attend)
-# ------------------------------------------------------------
-# ATTENDMONTH_W70 = attend mass in person
-# ATTENDONLINE_W70 = attend mass online
-#
-# attend codes:
-# 1 -> attend in person = 1, online = 1  (attend both)
-# 2 -> attend in person = 1, online = 2  (only in person)
-# 3 -> attend in person = 2, online = 1  (only online)
-# 4 -> attend in person = 2, online = 2  (attend neither)
-#
-# Note: rows with v1 == 99 or v2 == 99 are removed
-# ------------------------------------------------------------
-
-#model_multi <- multinom(attend ~ ., data = w70_cp)
-#summary(model_multi)
-# 错误于multinom(attend ~ ., data = w70_cp2): 
-#   need two or more classes to fit a multinom model
-# 此外: 警告信息:
-# In multinom(attend ~ ., data = w70_cp2) : groups ‘1’ ‘2’ ‘3’ ‘4’ are empty
-
-```
-
-```{r}
 w70_cp <- w70 %>%
   filter(F_RELIG %in% c(1,2))%>%
   filter(ATTENDMONTH_W70 != 99, ATTENDONLINE_W70 != 99)
@@ -252,10 +191,10 @@ w70_cp %>%
 ```{r}
 #| label: create clean dataset with attendmonth,attendonline (1/0)
 
-w70_cp_clean <- w70_cp
-w70_cp_clean$ATTENDMONTH_W70 <- as.character(w70_cp_clean$ATTENDMONTH_W70)
-w70_cp_clean$ATTENDMONTH_bin <- ifelse(
-  w70_cp_clean$ATTENDMONTH_W70 == "1",
+w70_cp_attend <- w70_cp
+w70_cp_attend$ATTENDMONTH_W70 <- as.character(w70_cp_attend$ATTENDMONTH_W70)
+w70_cp_attend$ATTENDMONTH_bin <- ifelse(
+  w70_cp_attend$ATTENDMONTH_W70 == "1",
   1, 0
 )
 ```
@@ -265,50 +204,124 @@ w70_cp_clean$ATTENDMONTH_bin <- ifelse(
 
 # COVIDCONG2_W70 
 # Regardless of whether it is now open to the public, is the house of worship you attend most often CURRENTLY streaming or recording its services so that people can watch them online or on TV?
-ggplot(w70_cp %>% filter(!is.na(COVIDCONG2_W70)), aes(x = factor(F_RELIG), fill = factor(COVIDCONG2_W70))) +
-  geom_bar(position = "dodge") +
-  geom_text(
-    stat = "count",
-    aes(label = after_stat(count)),          
+sum_stream <- w70_cp %>%
+  filter(
+    !is.na(COVIDCONG2_W70),
+    F_RELIG %in% c(1, 2)
+  ) %>%
+  count(F_RELIG, COVIDCONG2_W70, name = "count") %>%
+  group_by(F_RELIG) %>%
+  mutate(
+    n = sum(count),
+    prop = count / n,
+    se = sqrt(prop * (1 - prop) / n)
+  ) %>%
+  ungroup()%>%
+  mutate(
+    label = paste0(
+      count, "\n(",
+      scales::percent(prop, accuracy = 0.1),
+      ")"
+    )
+  )
+
+ggplot(
+  sum_stream,
+  aes(
+    x = factor(F_RELIG),
+    y = count,
+    fill = factor(COVIDCONG2_W70)
+  )
+) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(
+    aes(
+      ymin = count - n * se,
+      ymax = count + n * se
+    ),
     position = position_dodge(width = 0.9),
-    vjust = -0.3,
+    width = 0.25
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    vjust = -0.35,
     size = 3
   ) +
   labs(
     title = "Number of Congregations Streaming or Recording Services Online by Religion (July 2020)",
     x = "Religious Group",
-    y = "Number of People",
+    y = "Number of Respondents",
     fill = "Church Streams or Records Services"
   ) +
-  scale_x_discrete(labels = c("1" = "Protestant", "2" = "Roman Catholic")) +
-  scale_fill_discrete(labels = c("1" = "Yes", "2" = "No")) +  
+  scale_x_discrete(labels = c(
+    "1" = "Protestant",
+    "2" = "Roman Catholic"
+  )) +
+  scale_fill_discrete(labels = c(
+    "1" = "Yes",
+    "2" = "No"
+  )) +
   theme_minimal()
 
 
 # analysis
-model_1b <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_clean, family = binomial, weights = WEIGHT_W70)
+model_1b <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_attend, family = binomial, weights = WEIGHT_W70)
 
 summary(model_1b)
 
-model_1 <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_clean, family = binomial)
+model_1 <- glm(ATTENDMONTH_bin ~ factor(COVIDCONG2_W70), data = w70_cp_attend, family = binomial)
 
 summary(model_1)
 
 ```
 
-
-
 ```{r}
 #| label: COVIDCONG3_W70
 # COVIDCONG3_W70. 
 # Which of the following best describes the current operating status of the house of worship you attend most often?
-ggplot(w70_cp%>% filter(!is.na(COVIDCONG3_W70)), aes(x = factor(F_RELIG), fill = factor(COVIDCONG3_W70))) +
-  geom_bar(position = "dodge") +
-  geom_text(
-    stat = "count",
-    aes(label = after_stat(count)),          
+
+
+sum_w70 <- w70_cp %>%
+  filter(!is.na(COVIDCONG3_W70),
+         F_RELIG %in% c(1, 2)) %>%
+  count(F_RELIG, COVIDCONG3_W70, name = "count") %>%
+  group_by(F_RELIG) %>%
+  mutate(
+    n = sum(count),
+    prop = count / n,
+    se = sqrt(prop * (1 - prop) / n)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    label = paste0(
+      count, "\n(",
+      scales::percent(prop, accuracy = 0.1),
+      ")"
+    )
+  )
+
+ggplot(
+  sum_w70,
+  aes(
+    x = factor(F_RELIG),
+    y = count,
+    fill = factor(COVIDCONG3_W70)
+  )
+) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(
+    aes(
+      ymin = count - n * se,
+      ymax = count + n * se
+    ),
     position = position_dodge(width = 0.9),
-    vjust = -0.3,
+    width = 0.25
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    vjust = -0.35,
     size = 3
   ) +
   labs(
@@ -330,27 +343,62 @@ ggplot(w70_cp%>% filter(!is.na(COVIDCONG3_W70)), aes(x = factor(F_RELIG), fill =
   )) +
   theme_minimal()
 
+
+
 model_2 <- glm(
   ATTENDMONTH_bin ~ factor(COVIDCONG3_W70),
-  data = w70_cp_clean,
+  data = w70_cp_attend,
   family = binomial
 )
 summary(model_2)
 ```
 
-
-
 ```{r}
 #| label: CONGRESTRICT1_a_W70.
 # CONGRESTRICT1_a_W70. 
 # Which of the following, if any, is the house of worship you attend most often CURRENTLY doing as a result of the coronavirus outbreak?    Requiring people to stay at least 6 feet away from each other
-ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_a_W70)), aes(x = factor(F_RELIG), fill = factor(CONGRESTRICT1_a_W70))) +
-  geom_bar(position = "dodge") +
-  geom_text(
-    stat = "count",
-    aes(label = after_stat(count)),          
+sum_distancing <- w70_cp %>%
+  filter(
+    !is.na(CONGRESTRICT1_a_W70),
+    F_RELIG %in% c(1, 2)
+  ) %>%
+  count(F_RELIG, CONGRESTRICT1_a_W70, name = "count") %>%
+  group_by(F_RELIG) %>%
+  mutate(
+    n = sum(count),
+    prop = count / n,
+    se = sqrt(prop * (1 - prop) / n)
+  ) %>%
+  ungroup()%>%
+  mutate(
+    label = paste0(
+      count, "\n(",
+      scales::percent(prop, accuracy = 0.1),
+      ")"
+    )
+  )
+
+ggplot(
+  sum_distancing,
+  aes(
+    x = factor(F_RELIG),
+    y = count,
+    fill = factor(CONGRESTRICT1_a_W70)
+  )
+) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(
+    aes(
+      ymin = count - n * se,
+      ymax = count + n * se
+    ),
     position = position_dodge(width = 0.9),
-    vjust = -0.3,
+    width = 0.25
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    vjust = -0.35,
     size = 3
   ) +
   labs(
@@ -372,25 +420,59 @@ ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_a_W70)), aes(x = factor(F_RELIG), f
   theme_minimal()
 
 
+
 model_3 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_a_W70),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_3)
 ```
-
-People whose congregations did not require six-foot distancing were significantly more likely to have attended in-person services than those whose congregations did. Those who were not sure about distancing rules were much less likely to attend.
 
 ```{r}
 #| label: CONGRESTRICT1_b_W70
 # CONGRESTRICT1_b_W70. 
 # Which of the following, if any, is the house of worship you attend most often CURRENTLY doing as a result of the coronavirus outbreak?    Requiring people to wear masks
-ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_b_W70)), aes(x = factor(F_RELIG), fill = factor(CONGRESTRICT1_b_W70))) +
-  geom_bar(position = "dodge") +
-  geom_text(
-    stat = "count",
-    aes(label = after_stat(count)),          
+sum_mask <- w70_cp %>%
+  filter(
+    !is.na(CONGRESTRICT1_b_W70),
+    F_RELIG %in% c(1, 2)
+  ) %>%
+  count(F_RELIG, CONGRESTRICT1_b_W70, name = "count") %>%
+  group_by(F_RELIG) %>%
+  mutate(
+    n = sum(count),
+    prop = count / n,
+    se = sqrt(prop * (1 - prop) / n)
+  ) %>%
+  ungroup()%>%
+  mutate(
+    label = paste0(
+      count, "\n(",
+      scales::percent(prop, accuracy = 0.1),
+      ")"
+    )
+  )
+
+ggplot(
+  sum_mask,
+  aes(
+    x = factor(F_RELIG),
+    y = count,
+    fill = factor(CONGRESTRICT1_b_W70)
+  )
+) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(
+    aes(
+      ymin = count - n * se,
+      ymax = count + n * se
+    ),
     position = position_dodge(width = 0.9),
-    vjust = -0.3,
+    width = 0.25
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    vjust = -0.35,
     size = 3
   ) +
   labs(
@@ -413,25 +495,58 @@ ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_b_W70)), aes(x = factor(F_RELIG), f
 
 
 model_4 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_b_W70),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_4)
 ```
-
-People whose congregations did not require masks were significantly more likely to attend in-person religious services than those whose congregations did. Those who were unsure about mask rules were much less likely to attend.
 
 ```{r}
 #| label: CONGRESTRICT1_c_W70.
 
 # CONGRESTRICT1_c_W70. 
 # Which of the following, if any, is the house of worship you attend most often CURRENTLY doing as a result of the coronavirus outbreak?    Restricting the number of people who can attend at any one time
-ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_c_W70)), aes(x = factor(F_RELIG), fill = factor(CONGRESTRICT1_c_W70))) +
-  geom_bar(position = "dodge") +
-  geom_text(
-    stat = "count",
-    aes(label = after_stat(count)),          
+sum_attendance <- w70_cp %>%
+  filter(
+    !is.na(CONGRESTRICT1_c_W70),
+    F_RELIG %in% c(1, 2)
+  ) %>%
+  count(F_RELIG, CONGRESTRICT1_c_W70, name = "count") %>%
+  group_by(F_RELIG) %>%
+  mutate(
+    n = sum(count),
+    prop = count / n,
+    se = sqrt(prop * (1 - prop) / n)
+  ) %>%
+  ungroup()%>%
+  mutate(
+    label = paste0(
+      count, "\n(",
+      scales::percent(prop, accuracy = 0.1),
+      ")"
+    )
+  )
+
+ggplot(
+  sum_attendance,
+  aes(
+    x = factor(F_RELIG),
+    y = count,
+    fill = factor(CONGRESTRICT1_c_W70)
+  )
+) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(
+    aes(
+      ymin = count - n * se,
+      ymax = count + n * se
+    ),
     position = position_dodge(width = 0.9),
-    vjust = -0.3,
+    width = 0.25
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    vjust = -0.35,
     size = 3
   ) +
   labs(
@@ -453,28 +568,57 @@ ggplot(w70_cp%>% filter(!is.na(CONGRESTRICT1_c_W70)), aes(x = factor(F_RELIG), f
 
 
 model_5 <- glm(ATTENDMONTH_bin ~ factor(CONGRESTRICT1_c_W70),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_5)
 ```
-
-People whose congregations did not restrict attendance numbers were significantly more likely to attend in-person religious services than those that did. Respondents who were unsure about such restrictions were less likely to attend.
 
 ```{r}
 #| label: Technology & access
 
 # F_ACSWEB
 # Household internet status
+sum_internet <- w70_cp %>%
+  filter(
+    !is.na(F_ACSWEB),
+    F_RELIG %in% c(1, 2)
+  ) %>%
+  count(F_RELIG, F_ACSWEB, name = "count") %>%
+  group_by(F_RELIG) %>%
+  mutate(
+    n = sum(count),
+    prop = count / n,
+    se = sqrt(prop * (1 - prop) / n)
+  ) %>%
+  ungroup()%>%
+  mutate(
+    label = paste0(
+      count, "\n(",
+      scales::percent(prop, accuracy = 0.1),
+      ")"
+    )
+  )
 ggplot(
-  w70_cp %>% filter(!is.na(F_ACSWEB)),
-  aes(x = factor(F_RELIG), fill = factor(F_ACSWEB))
+  sum_internet,
+  aes(
+    x = factor(F_RELIG),
+    y = count,
+    fill = factor(F_ACSWEB)
+  )
 ) +
-  geom_bar(position = "dodge") +
-  geom_text(
-    stat = "count",
-    aes(label = after_stat(count)),
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(
+    aes(
+      ymin = count - n * se,
+      ymax = count + n * se
+    ),
     position = position_dodge(width = 0.9),
-    vjust = -0.3,
+    width = 0.25
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    vjust = -0.35,
     size = 3
   ) +
   labs(
@@ -493,32 +637,62 @@ ggplot(
   )) +
   theme_minimal()
 
+
 # 确保是字符型
-w70_cp_clean$F_ACSWEB <- as.character(w70_cp_clean$F_ACSWEB)
+w70_cp_attend$F_ACSWEB <- as.character(w70_cp_attend$F_ACSWEB)
 
 
 model_6 <- glm(ATTENDMONTH_bin ~ factor(F_ACSWEB),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_6)
 ```
 
-There was no significant relationship between household internet access and in-person religious attendance. Whether respondents had internet access or not did not meaningfully affect their likelihood of attending services.
-
 ```{r}
 # SNSUSE_W70. 
 # Do you ever use social media sites like Facebook, Twitter or Instagram?
+sum_sns <- w70_cp %>%
+  filter(
+    SNSUSE_W70 %in% c(1, 2),   # 去掉 Refused 和 NA
+    F_RELIG %in% c(1, 2)
+  ) %>%
+  count(F_RELIG, SNSUSE_W70, name = "count") %>%
+  group_by(F_RELIG) %>%
+  mutate(
+    n = sum(count),
+    prop = count / n,
+    se = sqrt(prop * (1 - prop) / n)
+  ) %>%
+  ungroup()%>%
+  mutate(
+    label = paste0(
+      count, "\n(",
+      scales::percent(prop, accuracy = 0.1),
+      ")"
+    )
+  )
+
 ggplot(
-  w70_cp %>% 
-    filter(SNSUSE_W70 %in% c(1, 2)),  # 去掉 Refused (99) 和 NA
-  aes(x = factor(F_RELIG), fill = factor(SNSUSE_W70))
+  sum_sns,
+  aes(
+    x = factor(F_RELIG),
+    y = count,
+    fill = factor(SNSUSE_W70)
+  )
 ) +
-  geom_bar(position = "dodge") +
-  geom_text(
-    stat = "count",
-    aes(label = after_stat(count)),
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(
+    aes(
+      ymin = count - n * se,
+      ymax = count + n * se
+    ),
     position = position_dodge(width = 0.9),
-    vjust = -0.3,
+    width = 0.25
+  ) +
+  geom_text(
+    aes(label = label),
+    position = position_dodge(width = 0.9),
+    vjust = -0.35,
     size = 3
   ) +
   labs(
@@ -539,7 +713,1193 @@ ggplot(
 
 
 model_7 <- glm(ATTENDMONTH_bin ~ factor(SNSUSE_W70),
-                data = w70_cp_clean,
+                data = w70_cp_attend,
                 family = binomial)
 summary(model_7)
+```
+
+
+```{r}
+df_sum <- df %>%
+  dplyr::group_by(F_RELIG) %>%
+  dplyr::mutate(N_relig = n()) %>%
+  dplyr::group_by(F_RELIG, ATTENDONLINE_W70) %>%
+  dplyr::summarise(
+    n = n(),                 # count
+    N = first(N_relig),
+    prop = n / N,            # proportion
+    se = sqrt(prop * (1 - prop) / N),
+    .groups = "drop"
+  )
+ggplot(df_sum,
+       aes(
+         x = factor(F_RELIG),
+         y = n,
+         fill = factor(ATTENDONLINE_W70)
+       )) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_text(
+    aes(
+      label = paste0(
+        scales::percent(prop, accuracy = 0.1),
+        "\n(SE = ",
+        scales::percent(se, accuracy = 0.1),
+        ")"
+      )
+    ),
+    position = position_dodge(width = 0.9),
+    vjust = -0.4,
+    size = 3
+  ) +
+  labs(
+    title = "Number of Respondents Attending Online Worship by Religion (July 2020)",
+    x = "Religious Group",
+    y = "Number of Respondents",
+    fill = "Attended Online"
+  ) +
+  scale_x_discrete(
+    labels = c("1" = "Protestant", "2" = "Roman Catholic")
+  ) +
+  scale_fill_discrete(
+    labels = c("1" = "Yes", "2" = "No")
+  ) +
+  theme_minimal()
+```
+
+```{r}
+df2_sum <- df2 %>%
+  dplyr::group_by(F_RELIG) %>%
+  dplyr::mutate(N_relig = n()) %>%   # 每个宗教组的总人数
+  dplyr::group_by(F_RELIG, ATTENDONLINE_W84) %>%
+  dplyr::summarise(
+    n = n(),                 # count
+    N = first(N_relig),
+    prop = n / N,            # proportion
+    se = sqrt(prop * (1 - prop) / N),
+    .groups = "drop"
+  )
+ggplot(df2_sum,
+       aes(
+         x = factor(F_RELIG),
+         y = n,
+         fill = factor(ATTENDONLINE_W84)
+       )) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_text(
+    aes(
+      label = paste0(
+        scales::percent(prop, accuracy = 0.1),
+        "\n(SE = ",
+        scales::percent(se, accuracy = 0.1),
+        ")"
+      )
+    ),
+    position = position_dodge(width = 0.9),
+    vjust = -0.4,
+    size = 3
+  ) +
+  labs(
+    title = "Number of Respondents Attending Online Worship by Religion (March 2021)",
+    x = "Religious Group",
+    y = "Number of Respondents",
+    fill = "Attended Online"
+  ) +
+  scale_x_discrete(
+    labels = c("1" = "Protestant", "2" = "Roman Catholic")
+  ) +
+  scale_fill_discrete(
+    labels = c("1" = "Yes", "2" = "No")
+  ) +
+  theme_minimal()
+
+```
+
+
+## \# EDA end
+
+# create attend variable in w70
+
+```{r}
+
+#| label: create respond variable attend
+
+library(nnet)
+w70_cp <- w70 %>% 
+  filter(F_RELIG %in% c(1,2)) %>% 
+  filter(ATTENDMONTH_W70 != 99, ATTENDONLINE_W70 != 99) %>%
+  mutate(attend = case_when(
+    ATTENDMONTH_W70 == 1 & ATTENDONLINE_W70 == 1 ~ "Both",
+    ATTENDMONTH_W70 == 1 & ATTENDONLINE_W70 == 2 ~ "In-person only",
+    ATTENDMONTH_W70 == 2 & ATTENDONLINE_W70 == 1 ~ "Online only",
+    ATTENDMONTH_W70 == 2 & ATTENDONLINE_W70 == 2 ~ "Neither"
+  )) %>%
+  mutate(attend = factor(attend, 
+                         levels = c("In-person only", "Online only", "Both", "Neither")))
+w70_cp$attend <- relevel(w70_cp$attend, ref = "In-person only")
+table(w70_cp$attend)
+# ------------------------------------------------------------
+# ATTENDMONTH_W70 = attend mass in person
+# ATTENDONLINE_W70 = attend mass online
+#
+# attend codes:
+# 1 -> attend in person = 1, online = 1  (attend both)
+# 2 -> attend in person = 1, online = 2  (only in person)
+# 3 -> attend in person = 2, online = 1  (only online)
+# 4 -> attend in person = 2, online = 2  (attend neither)
+#
+# Note: rows with v1 == 99 or v2 == 99 are removed
+# ------------------------------------------------------------
+
+```
+
+# w70 attend patterns
+
+```{r}
+attend_counts <- w70_cp %>%
+  count(attend)
+
+# 绘图
+ggplot(attend_counts, aes(x = attend, y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = n), vjust = -0.3, size = 4) +
+  labs(
+    title = "Attendance Patterns(Wave 70)",
+    x = "Attendance Type",
+    y = "Number of Respondents"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+attend_counts <- w70_cp %>%
+  count(attend) %>%
+  mutate(
+    N = sum(n),
+    prop = n / N,
+    se = sqrt(prop * (1 - prop) / N)
+  )
+
+
+attend_counts <- attend_counts %>%
+  mutate(
+    prop_pct = prop * 100,
+    se_pct = se * 100
+  )
+
+ggplot(attend_counts, aes(x = attend, y = prop)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(
+    aes(ymin = prop - se, ymax = prop + se),
+    width = 0.15
+  ) +
+  geom_text(
+    aes(
+      label = sprintf("%.1f%%\n(SE = %.2f%%)", prop_pct, se_pct)
+    ),
+    vjust = -0.4,
+    size = 3.8
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Attendance Patterns (Wave 70)",
+    x = "Attendance Type",
+    y = "Share of Respondents"
+  ) +
+  theme_minimal()
+
+```
+
+# h1 model
+
+```{r}
+#| label: Hypothesis 1
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    ATTENDCONF_W70, COVIDCONG3_W70, COVIDCONG4_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    CTKNOW1_W70, CONTACTTRAC1_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70
+  ), ~ . != 99))
+
+# Step 2: 转为 factor
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    ATTENDCONF_W70, COVIDCONG3_W70, COVIDCONG4_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    CTKNOW1_W70, CONTACTTRAC1_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h1 <- c(
+  "ATTENDCONF_W70", "COVIDCONG3_W70", "COVIDCONG4_W70",
+  "CONGRESTRICT2_a_W70", "CONGRESTRICT2_b_W70", "CONGRESTRICT2_c_W70",
+  "CTKNOW1_W70", "CONTACTTRAC1_W70",
+  "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+  "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h1], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h1, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h1 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合模型
+model_h1 <- multinom(formula_h1, data = w70_cp_clean)
+
+# Step 7: 输出 summary 与显著性
+summary(model_h1)
+
+# check p-values to find statstical significant variables
+tidy(model_h1, conf.int = TRUE) %>% print(n = 42)
+```
+
+# predict table h1
+
+```{r}
+#| label: predictor table for h1 w70
+
+library(dplyr)
+library(nnet)
+library(gtsummary)
+
+w70_h1 <- w70_cp_clean %>%
+  mutate(
+    # 1️⃣ 出席信心
+    ATTENDCONF_W70 = factor(
+      ATTENDCONF_W70,
+      levels = c(1, 2, 3, 4),
+      labels = c("Very confident",
+                 "Somewhat confident",
+                 "Not too confident",
+                 "Not at all confident")
+    ),
+
+    # 2️⃣ 教会防疫行动
+    COVIDCONG3_W70 = factor(
+      COVIDCONG3_W70,
+      levels = c(1, 2, 3, 4),
+      labels = c("No actions",
+                 "Some actions",
+                 "Many actions",
+                 "Extensive actions")
+    ),
+
+    # 3️⃣ 教会限制措施
+    CONGRESTRICT2_c_W70 = factor(
+      CONGRESTRICT2_c_W70,
+      levels = c(1, 2, 3, 4),
+      labels = c("No restrictions",
+                 "Minor restrictions",
+                 "Major restrictions",
+                 "Severe restrictions")
+    ),
+
+    # 4️⃣ 接触追踪
+    CONTACTTRAC1_W70 = factor(
+      CONTACTTRAC1_W70,
+      levels = c(1, 2),
+      labels = c("Support contact tracing",
+                 "Do not support")
+    ),
+
+    # 5️⃣ 布道主题 c: COVID 防控
+    SERMONISSUE_c_W70 = factor(
+      SERMONISSUE_c_W70,
+      levels = c(1, 2),
+      labels = c("Heard sermons on limiting COVID spread",
+                 "Did not hear such sermons")
+    ),
+
+    # 6️⃣ 布道主题 f: 其他议题
+    SERMONISSUE_f_W70 = factor(
+      SERMONISSUE_f_W70,
+      levels = c(1, 2),
+      labels = c("Heard sermons on other topics",
+                 "Did not hear such sermons")
+    ) 
+  )
+
+#set "did not hear" as reference 
+w70_h1$SERMONISSUE_c_W70 <- relevel(
+  w70_h1$SERMONISSUE_c_W70,
+  ref = "Did not hear such sermons"
+)
+w70_h1$SERMONISSUE_f_W70 <- relevel(
+  w70_h1$SERMONISSUE_f_W70,
+  ref = "Did not hear such sermons"
+)
+w70_h1$CONTACTTRAC1_W70 <- relevel(
+  w70_h1$CONTACTTRAC1_W70,
+  ref = "Do not support"
+)
+
+model_h1_sub <- multinom(
+  attend ~ ATTENDCONF_W70 + COVIDCONG3_W70 +
+    CONGRESTRICT2_c_W70 + CONTACTTRAC1_W70 +
+    SERMONISSUE_c_W70 + SERMONISSUE_f_W70,
+  data = w70_h1
+)
+
+tbl_regression(
+  model_h1_sub,
+  exponentiate = TRUE,
+  label = list(
+    ATTENDCONF_W70 ~ "Confidence in attending safely",
+    COVIDCONG3_W70 ~ "Congregation’s COVID safety actions",
+    CONGRESTRICT2_c_W70 ~ "Congregational restrictions",
+    CONTACTTRAC1_W70 ~ "Contact tracing support",
+    SERMONISSUE_c_W70 ~ "Sermon topic: limiting COVID spread",
+    SERMONISSUE_f_W70 ~ "Sermon topic: other issues"
+  )
+) %>%
+  modify_caption("**Predictors of Online and Hybrid Attendance (Refused Responses Removed)**") %>%
+  bold_labels()
+
+
+```
+
+# h2
+
+```{r}
+#| label: Hypothesis 2
+
+# Step 1: 清理掉含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    COVIDTHREAT_a_W70, COVIDTHREAT_b_W70, COVIDTHREAT_c_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    COVIDLESSON1_W70, COVIDLESSON2_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    COVIDCONG4_W70
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    COVIDTHREAT_a_W70, COVIDTHREAT_b_W70, COVIDTHREAT_c_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    COVIDLESSON1_W70, COVIDLESSON2_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    COVIDCONG4_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别为 In-person only
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h2 <- c(
+  "COVIDTHREAT_a_W70", "COVIDTHREAT_b_W70", "COVIDTHREAT_c_W70",
+  "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+  "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70",
+  "COVIDLESSON1_W70", "COVIDLESSON2_W70",
+  "CONGRESTRICT2_a_W70", "CONGRESTRICT2_b_W70", "CONGRESTRICT2_c_W70",
+  "COVIDCONG4_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h2], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h2, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h2 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h2 <- multinom(formula_h2, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h2)
+
+z <- summary(model_h2)$coefficients / summary(model_h2)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+```
+
+# h3
+
+```{r}
+#| label: Hypothesis 3
+
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    SNSUSE_W70, F_ACSWEB, ONLINESERV_W70,
+    F_EDUCCAT2, F_AGECAT, F_INCOME_RECODE
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    SNSUSE_W70, F_ACSWEB, ONLINESERV_W70,
+    F_EDUCCAT2, F_AGECAT, F_INCOME_RECODE
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h3 <- c(
+  "SNSUSE_W70", "F_ACSWEB", "ONLINESERV_W70",
+  "F_EDUCCAT2", "F_AGECAT", "F_INCOME_RECODE"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h3], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h3, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h3 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h3 <- multinom(formula_h3, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h3)
+
+z <- summary(model_h3)$coefficients / summary(model_h3)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+# h4
+
+```{r}
+#| label: Hypothesis 4
+
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    ONLINESERV_W70,
+    F_ACSWEB,
+    COVIDCONG2_W70, COVIDCONG3_W70, COVIDCONG4_W70,
+    CONGDONATE_W70
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    ONLINESERV_W70,
+    F_ACSWEB,
+    COVIDCONG2_W70, COVIDCONG3_W70, COVIDCONG4_W70,
+    CONGDONATE_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h4 <- c(
+  "ONLINESERV_W70",
+  "F_ACSWEB", 
+  "COVIDCONG2_W70", "COVIDCONG3_W70", "COVIDCONG4_W70",
+  "CONGDONATE_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h4], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h4, invalid_vars)
+
+# Step 5: 动态建立公式
+formula_h4 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h4 <- multinom(formula_h4, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h4)
+
+z <- summary(model_h4)$coefficients / summary(model_h4)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+# h5
+
+```{r}
+#| label: Hypothesis 5
+
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    CONGDONATE_W70,
+    COVIDCONG4_W70, COVIDCONG3_W70, COVIDCONG2_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    F_METRO
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    CONGDONATE_W70,
+    COVIDCONG4_W70, COVIDCONG3_W70, COVIDCONG2_W70,
+    CONGRESTRICT2_a_W70, CONGRESTRICT2_b_W70, CONGRESTRICT2_c_W70,
+    F_METRO
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h5 <- c(
+  "CONGDONATE_W70",
+  "COVIDCONG4_W70", "COVIDCONG3_W70", "COVIDCONG2_W70",
+  "CONGRESTRICT2_a_W70", "CONGRESTRICT2_b_W70", "CONGRESTRICT2_c_W70",
+  "F_METRO"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h5], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h5, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h5 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h5 <- multinom(formula_h5, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h5)
+
+z <- summary(model_h5)$coefficients / summary(model_h5)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+# h6
+
+```{r}
+#| label: Hypothesis 6
+
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    CONGRESTRICT2_d_W70,
+    COVIDCONG4_W70, COVIDCONG3_W70,
+    CONGRESTRICT1_a_W70, CONGRESTRICT1_b_W70, CONGRESTRICT1_c_W70,
+    ATTENDCONF_W70
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    CONGRESTRICT2_d_W70,
+    COVIDCONG4_W70, COVIDCONG3_W70,
+    CONGRESTRICT1_a_W70, CONGRESTRICT1_b_W70, CONGRESTRICT1_c_W70,
+    ATTENDCONF_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h6 <- c(
+  "CONGRESTRICT2_d_W70",
+  "COVIDCONG4_W70", "COVIDCONG3_W70",
+  "CONGRESTRICT1_a_W70", "CONGRESTRICT1_b_W70", "CONGRESTRICT1_c_W70",
+  "ATTENDCONF_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h6], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h6, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h6 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h6 <- multinom(formula_h6, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h6)
+
+z <- summary(model_h6)$coefficients / summary(model_h6)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+# h7
+
+```{r}
+#| label: Hypothesis 7
+
+# Step 1: 清除含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    CTKNOW1_W70, CONTACTTRAC1_W70,
+    COVIDLESSON1_W70, COVIDLESSON2_W70,
+    COVIDCONG3_W70, COVIDCONG4_W70, COVIDCONG2_W70
+  ), ~ . != 99))
+
+# Step 2: 将所有自变量转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    CTKNOW1_W70, CONTACTTRAC1_W70,
+    COVIDLESSON1_W70, COVIDLESSON2_W70,
+    COVIDCONG3_W70, COVIDCONG4_W70, COVIDCONG2_W70
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h7 <- c(
+  "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+  "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70",
+  "CTKNOW1_W70", "CONTACTTRAC1_W70",
+  "COVIDLESSON1_W70", "COVIDLESSON2_W70",
+  "COVIDCONG3_W70", "COVIDCONG4_W70", "COVIDCONG2_W70"
+)
+
+# 检查每个变量的水平数
+level_counts <- sapply(w70_cp_clean[, vars_h7], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h7, invalid_vars)
+
+# Step 5: 动态建立 formula
+formula_h7 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归模型
+model_h7 <- multinom(formula_h7, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h7)
+
+z <- summary(model_h7)$coefficients / summary(model_h7)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+# h8
+
+```{r}
+#| label: Hypothesis 8
+
+
+# Step 1: 清理含有 99 的观测
+w70_cp_clean <- w70_cp %>%
+  filter(if_all(c(
+    CONGDONATE_W70,
+    ATTENDCONF_W70,
+    COVIDTHREAT_a_W70, COVIDTHREAT_b_W70, COVIDTHREAT_c_W70,
+    CONGRESTRICT2_d_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    ONLINESERV_W70,
+    F_RELIG
+  ), ~ . != 99))
+
+# Step 2: 转为因子
+w70_cp_clean <- w70_cp_clean %>%
+  mutate(across(c(
+    CONGDONATE_W70,
+    ATTENDCONF_W70,
+    COVIDTHREAT_a_W70, COVIDTHREAT_b_W70, COVIDTHREAT_c_W70,
+    CONGRESTRICT2_d_W70,
+    SERMONISSUE_a_W70, SERMONISSUE_b_W70, SERMONISSUE_c_W70,
+    SERMONISSUE_d_W70, SERMONISSUE_e_W70, SERMONISSUE_f_W70,
+    ONLINESERV_W70,
+    F_RELIG
+  ), as.factor))
+
+# Step 3: 设置 reference 类别
+w70_cp_clean$attend <- relevel(w70_cp_clean$attend, ref = "In-person only")
+
+# Step 4: 自动检测并移除只有一个水平的变量
+vars_h8 <- c(
+  "CONGDONATE_W70",
+  "ATTENDCONF_W70",
+  "COVIDTHREAT_a_W70", "COVIDTHREAT_b_W70", "COVIDTHREAT_c_W70",
+  "CONGRESTRICT2_d_W70",
+  "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+  "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70",
+  "ONLINESERV_W70",
+  "F_RELIG"
+)
+
+level_counts <- sapply(w70_cp_clean[, vars_h8], nlevels)
+invalid_vars <- names(level_counts[level_counts <= 1])
+
+if (length(invalid_vars) > 0) {
+  message("⚠️ 以下变量只有一个水平，被自动移除: ", paste(invalid_vars, collapse = ", "))
+}
+
+valid_vars <- setdiff(vars_h8, invalid_vars)
+
+# Step 5: 动态 formula （带宗派交互项）
+# 如果你想显式建模交互，可添加 "+ F_RELIG:CONGDONATE_W70" 等项
+formula_h8 <- as.formula(paste("attend ~", paste(valid_vars, collapse = " + ")))
+
+# Step 6: 拟合多项逻辑回归
+model_h8 <- multinom(formula_h8, data = w70_cp_clean)
+
+# Step 7: 输出结果与显著性
+summary(model_h8)
+
+z <- summary(model_h8)$coefficients / summary(model_h8)$standard.errors
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+round(p, 4)
+
+```
+
+```{r}
+# Step 1: 过滤宗教样本 + 移除 attend 相关的 99
+w84_cp <- w84 %>%
+  filter(F_RELIG %in% c(1, 2)) %>%
+  filter(ATTENDMONTH_W84 != 99, ATTENDONLINE_W84 != 99) %>%
+  mutate(attend = case_when(
+    ATTENDMONTH_W84 == 1 & ATTENDONLINE_W84 == 1 ~ "Both",
+    ATTENDMONTH_W84 == 1 & ATTENDONLINE_W84 == 2 ~ "In-person only",
+    ATTENDMONTH_W84 == 2 & ATTENDONLINE_W84 == 1 ~ "Online only",
+    ATTENDMONTH_W84 == 2 & ATTENDONLINE_W84 == 2 ~ "Neither"
+  )) %>%
+  mutate(attend = factor(attend,
+                         levels = c("In-person only", "Online only", "Both", "Neither")))
+
+# Relevel
+w84_cp$attend <- relevel(w84_cp$attend, ref = "In-person only")
+### 通用函数（你已经在用的）
+run_multinom <- function(data, vars) {
+  clean <- data %>% filter(if_all(all_of(vars), ~ . != 99))
+
+  clean <- clean %>%
+    mutate(across(all_of(vars), as.factor))
+
+  clean$attend <- relevel(clean$attend, ref = "In-person only")
+
+  lv <- sapply(clean[, vars], nlevels)
+  vars_valid <- names(lv[lv > 1])
+
+  fml <- as.formula(paste("attend ~", paste(vars_valid, collapse = " + ")))
+
+  model <- multinom(fml, data = clean)
+
+  return(list(model = model, vars = vars_valid, data = clean))
+}
+
+```
+
+```{r}
+vars_84h1 <- c("COVIDSPIR_W84", "COVIDCONG3_W84", "COVIDCONG4_W84")
+
+h1_W84 <- run_multinom(w84_cp, vars_84h1)
+summary(h1_W84$model)
+
+```
+
+```{r}
+vars_84h2 <- c("COVIDSPIR_W84")
+
+h2_W84 <- run_multinom(w84_cp, vars_84h2)
+summary(h2_W84$model)
+
+```
+
+```{r}
+vars_84h3 <- c("ESTR21_W84", "ESTRTYP_W84")
+
+h3_W84 <- run_multinom(w84_cp, vars_84h3)
+summary(h3_W84$model)
+
+```
+
+```{r}
+vars_84h4 <- c("COVIDCONG2_W84", "CONGRESTRICT1_d_W84")
+
+h4_W84 <- run_multinom(w84_cp, vars_84h4)
+summary(h4_W84$model)
+
+
+```
+
+```{r}
+vars_84h5 <- c("CONGRESTRICT1_c_W84", "CONGRESTRICT1_b_W84")
+
+h5_W84 <- run_multinom(w84_cp, vars_84h5)
+summary(h5_W84$model)
+
+```
+
+```{r}
+vars_84h6 <- c(
+  "CONGRESTRICT1_a_W84","CONGRESTRICT1_b_W84","CONGRESTRICT1_c_W84",
+  "CONGRESTRICT1_d_W84","CONGRESTRICT1_e_W84"
+)
+
+h6_W84 <- run_multinom(w84_cp, vars_84h6)
+summary(h6_W84$model)
+
+```
+
+```{r}
+  vars_84h7 <- c(
+  "SERMONISSUE_h_W84","SERMONISSUE_i_W84",
+  "SERMONISSUE_j_W84","SERMONISSUE_k_W84"
+)
+
+h7_W84 <- run_multinom(w84_cp, vars_84h7)
+summary(h7_W84$model)
+
+
+```
+
+```{r}
+formula_84h8 <- attend ~  
+  COVIDSPIR_W84 + COVIDCONG2_W84 + 
+  CONGRESTRICT1_a_W84 + CONGRESTRICT1_b_W84 + CONGRESTRICT1_c_W84 +
+  CONGRESTRICT1_d_W84 + CONGRESTRICT1_e_W84 +
+  CONGRESTRICT2_a_W84 + CONGRESTRICT2_b_W84 +
+  CONGRESTRICT2_c_W84 + CONGRESTRICT2_d_W84 + CONGRESTRICT2_e_W84 +
+  SERMONISSUE_h_W84 + SERMONISSUE_i_W84 +
+  SERMONISSUE_j_W84 + SERMONISSUE_k_W84 +
+  ESTR21_W84 + ESTRTYP_W84
+
+w84_h8_clean <- w84_cp %>%
+  filter(if_all(all.vars(formula_84h8)[-1], ~ . != 99)) %>%
+  mutate(across(all.vars(formula_84h8)[-1], as.factor))
+
+w84_h8_clean$attend <- relevel(w84_h8_clean$attend, ref = "In-person only")
+
+h8_W84 <- multinom(formula_84h8, data = w84_h8_clean)
+summary(h8_W84)
+
+```
+
+------------------------------------------------------------------------
+
+#12.2 update
+
+```{r}
+# function 
+run_multinom_model <- function(data, outcome_var, predictor_vars, ref_level = "In-person only") {
+  library(nnet)
+  library(dplyr)
+  
+  # Step 1: remove 99
+  data_clean <- data %>%
+    filter(if_all(all_of(predictor_vars), ~ . != 99))
+
+  # Step 2: convert predictors to factor
+  data_clean <- data_clean %>%
+    mutate(across(all_of(predictor_vars), as.factor))
+
+  # Step 3: set reference category for outcome
+  data_clean[[outcome_var]] <- relevel(as.factor(data_clean[[outcome_var]]), ref = ref_level)
+
+  # Step 4: drop predictors with only 1 level
+  level_counts <- sapply(data_clean[, predictor_vars, drop = FALSE], nlevels)
+  invalid_vars <- names(level_counts[level_counts <= 1])
+
+  if (length(invalid_vars) > 0) {
+    message("⚠️ Dropped variables (only 1 level): ",
+            paste(invalid_vars, collapse = ", "))
+  }
+
+  valid_vars <- setdiff(predictor_vars, invalid_vars)
+
+  # Step 5: build formula
+  formula_obj <- as.formula(
+    paste(outcome_var, "~", paste(valid_vars, collapse = " + "))
+  )
+
+  # Step 6: fit multinom model
+  model <- multinom(formula_obj, data = data_clean)
+
+  # Step 7: return model & summary
+  list(
+    model = model,
+    summary = summary(model),
+    valid_vars = valid_vars,
+    dropped_vars = invalid_vars
+  )
+}
+# how to use
+# vars_h1 <- c(
+#   "ATTENDCONF_W70", "COVIDCONG3_W70", "COVIDCONG4_W70",
+#   "CONGRESTRICT2_a_W70", "CONGRESTRICT2_b_W70", "CONGRESTRICT2_c_W70",
+#   "CTKNOW1_W70", "CONTACTTRAC1_W70",
+#   "SERMONISSUE_a_W70", "SERMONISSUE_b_W70", "SERMONISSUE_c_W70",
+#   "SERMONISSUE_d_W70", "SERMONISSUE_e_W70", "SERMONISSUE_f_W70"
+# )
+# 
+# res_h1 <- run_multinom_model(
+#   data = w70_cp,
+#   outcome_var = "attend",
+#   predictor_vars = vars_h1,
+#   ref_level = "In-person only"
+# )
+# res_h1$summary      # 模型 summary
+# res_h1$model        # 模型对象，可用于 gtsummary
+# res_h1$valid_vars   # 被保留的变量
+# res_h1$dropped_vars # 自动被丢弃的变量
+```
+
+```{r}
+# setup
+w70_cp <- w70_cp %>%
+  mutate(
+    CONGRESTRICT2_a_W70 = ifelse(CONGRESTRICT2_a_W70 == 99, NA, CONGRESTRICT2_a_W70),
+    CONGRESTRICT2_b_W70 = ifelse(CONGRESTRICT2_b_W70 == 99, NA, CONGRESTRICT2_b_W70),
+    CONGRESTRICT2_c_W70 = ifelse(CONGRESTRICT2_c_W70 == 99, NA, CONGRESTRICT2_c_W70),
+    
+    # recode: Yes=1, No=0, Not sure=0
+    CONGRESTRICT2_a_rec = ifelse(CONGRESTRICT2_a_W70 == 1, 1, 0),
+    CONGRESTRICT2_b_rec = ifelse(CONGRESTRICT2_b_W70 == 1, 1, 0),
+    CONGRESTRICT2_c_rec = ifelse(CONGRESTRICT2_c_W70 == 1, 1, 0),
+
+    # combine: total restrictions
+    CONGRESTRICT2_total_W70 = CONGRESTRICT2_a_rec +
+                              CONGRESTRICT2_b_rec +
+                              CONGRESTRICT2_c_rec
+  )%>%
+  mutate(
+    # remove refused (optional)
+    COVIDCONG3_W70 = ifelse(COVIDCONG3_W70 == 99, NA, COVIDCONG3_W70),
+
+    # 1: not open
+    COVIDCONG3_notopen = ifelse(COVIDCONG3_W70 == 3, 1, 0),
+
+    # 2: open with changes
+    COVIDCONG3_open_changed = ifelse(COVIDCONG3_W70 == 2, 1, 0)
+  ) %>%
+  mutate(
+    # remove refused
+    COVIDTHREAT_a_W70 = ifelse(COVIDTHREAT_a_W70 == 99, NA, COVIDTHREAT_a_W70),
+    COVIDTHREAT_b_W70 = ifelse(COVIDTHREAT_b_W70 == 99, NA, COVIDTHREAT_b_W70),
+
+    COVIDTHREAT_health_cat = case_when(
+      COVIDTHREAT_a_W70 == 1 | COVIDTHREAT_b_W70 == 1 ~ 1, # major
+      COVIDTHREAT_a_W70 == 2 | COVIDTHREAT_b_W70 == 2 ~ 2, # minor
+      COVIDTHREAT_a_W70 == 3 & COVIDTHREAT_b_W70 == 3 ~ 3, # not a threat
+      TRUE ~ NA_real_
+    )
+  )
+
+  
+
+
+w70_c <- w70_cp %>%
+  filter(F_RELIG == 2)
+w70_p <- w70_cp %>%
+  filter(F_RELIG == 1)
+```
+
+```{r}
+vars_w70c <- c(
+  "ATTENDCONF_W70","CONGRESTRICT2_total_W70","COVIDTHREAT_health_cat","SNSUSE_W70",
+  "F_ACSWEB", "COVIDCONG2_W70", "CONGRESTRICT1_c_W70", "COVIDCONG3_notopen", "COVIDCONG3_open_changed",
+  "CONGRESTRICT1_a_W70", "CONGRESTRICT1_b_W70", "CONGRESTRICT2_d_W70", "SERMONISSUE_c_W70", "CTKNOW1_W70"
+)
+
+res_w70c <- run_multinom_model(
+  data = w70_c,
+  outcome_var = "attend",
+  predictor_vars = vars_w70c,
+  ref_level = "In-person only"
+)
+res_w70c$summary 
+```
+
+```{r}
+vars_w70p <- c(
+  "ATTENDCONF_W70","CONGRESTRICT2_total_W70","COVIDTHREAT_health_cat","SNSUSE_W70",
+  "F_ACSWEB", "COVIDCONG2_W70", "CONGRESTRICT1_c_W70", "COVIDCONG3_notopen", "COVIDCONG3_open_changed",
+  "CONGRESTRICT1_a_W70", "CONGRESTRICT1_b_W70", "CONGRESTRICT2_d_W70", "SERMONISSUE_c_W70", "CTKNOW1_W70"
+)
+
+res_w70p <- run_multinom_model(
+  data = w70_p,
+  outcome_var = "attend",
+  predictor_vars = vars_w70p,
+  ref_level = "In-person only"
+)
+res_w70p$summary 
+```
+
+# w84 set up
+
+```{r}
+# setup
+w84_cp <- w84_cp %>%
+  mutate(
+    CONGRESTRICT2_a_W84 = ifelse(CONGRESTRICT2_a_W84 == 99, NA, CONGRESTRICT2_a_W84),
+    CONGRESTRICT2_b_W84 = ifelse(CONGRESTRICT2_b_W84 == 99, NA, CONGRESTRICT2_b_W84),
+    CONGRESTRICT2_c_W84 = ifelse(CONGRESTRICT2_c_W84 == 99, NA, CONGRESTRICT2_c_W84),
+    
+    # recode: Yes=1, No=0, Not sure=0
+    CONGRESTRICT2_a_rec = ifelse(CONGRESTRICT2_a_W84 == 1, 1, 0),
+    CONGRESTRICT2_b_rec = ifelse(CONGRESTRICT2_b_W84 == 1, 1, 0),
+    CONGRESTRICT2_c_rec = ifelse(CONGRESTRICT2_c_W84 == 1, 1, 0),
+
+    # combine: total restrictions
+    CONGRESTRICT2_total_W84 = CONGRESTRICT2_a_rec +
+                              CONGRESTRICT2_b_rec +
+                              CONGRESTRICT2_c_rec
+  )%>%
+  mutate(
+    # remove refused (optional)
+    COVIDCONG3_W84 = ifelse(COVIDCONG3_W84 == 99, NA, COVIDCONG3_W84),
+
+    # 1: not open
+    COVIDCONG3_notopen = ifelse(COVIDCONG3_W84 == 3, 1, 0),
+
+    # 2: open with changes
+    COVIDCONG3_open_changed = ifelse(COVIDCONG3_W84 == 2, 1, 0)
+  ) 
+# %>%
+#   mutate(
+#     # remove refused
+#     COVIDTHREAT_a_W84 = ifelse(COVIDTHREAT_a_W84 == 99, NA, COVIDTHREAT_a_W84),
+#     COVIDTHREAT_b_W84 = ifelse(COVIDTHREAT_b_W84 == 99, NA, COVIDTHREAT_b_W84),
+# 
+#     COVIDTHREAT_health_cat = case_when(
+#       COVIDTHREAT_a_W84 == 1 | COVIDTHREAT_b_W84 == 1 ~ 1, # major
+#       COVIDTHREAT_a_W84 == 2 | COVIDTHREAT_b_W84 == 2 ~ 2, # minor
+#       COVIDTHREAT_a_W84 == 3 & COVIDTHREAT_b_W84 == 3 ~ 3, # not a threat
+#       TRUE ~ NA_real_
+#     )
+#   )
+# There is no COVIDTHREAT in w84
+  
+
+
+w84_c <- w84_cp %>%
+  filter(F_RELIG == 2)
+w84_p <- w84_cp %>%
+  filter(F_RELIG == 1)
+```
+
+```{r}
+attend_counts <- w84_cp %>%
+  count(attend) %>%
+  mutate(
+    N = sum(n),
+    prop = n / N,
+    se = sqrt(prop * (1 - prop) / N)
+  )
+
+attend_counts <- attend_counts %>%
+  mutate(
+    prop_pct = prop * 100,
+    se_pct = se * 100
+  )
+
+ggplot(attend_counts, aes(x = attend, y = prop)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(
+    aes(ymin = prop - se, ymax = prop + se),
+    width = 0.15
+  ) +
+  geom_text(
+    aes(
+      label = sprintf("%.1f%%\n(SE = %.2f%%)", prop_pct, se_pct)
+    ),
+    vjust = -0.4,
+    size = 3.8
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Attendance Patterns (Wave 84)",
+    x = "Attendance Type",
+    y = "Share of Respondents"
+  ) +
+  theme_minimal()
+
+```
+
+
+```{r}
+vars_w84p <- c(
+  "ATTENDCONF_W84","CONGRESTRICT2_total_W84",
+  "COVIDCONG2_W84", "CONGRESTRICT1_c_W84", "COVIDCONG3_notopen", "COVIDCONG3_open_changed",
+  "CONGRESTRICT1_a_W84", "CONGRESTRICT1_b_W84", "CONGRESTRICT2_d_W84"
+)
+
+res_w84p <- run_multinom_model(
+  data = w84_p,
+  outcome_var = "attend",
+  predictor_vars = vars_w84p,
+  ref_level = "In-person only"
+)
+res_w84p$summary 
+```
+
+```{r}
+vars_w84c <- c(
+  "ATTENDCONF_W84","CONGRESTRICT2_total_W84",
+  "COVIDCONG2_W84", "CONGRESTRICT1_c_W84", "COVIDCONG3_notopen", "COVIDCONG3_open_changed",
+  "CONGRESTRICT1_a_W84", "CONGRESTRICT1_b_W84", "CONGRESTRICT2_d_W84"
+)
+
+res_w84c <- run_multinom_model(
+  data = w84_c,
+  outcome_var = "attend",
+  predictor_vars = vars_w84c,
+  ref_level = "In-person only"
+)
+res_w84c$summary 
 ```
